@@ -111,6 +111,16 @@ directory instead, which fails confusingly rather than clearly. If you
 haven't run `rclone config` yet, leave email polling running without it;
 nothing else in the app depends on it existing.
 
+`rclone config` creates that file mode `0600` (owner-only) - the container
+runs as a non-root user that won't share your host UID, so it can't read it
+as-is. Loosen the permissions after creating it:
+```bash
+chmod 644 /home/you/.config/rclone/rclone.conf
+```
+Symptom if you skip this: `FolderSyncJob`/downloads fail with `permission
+denied` reading `/config/rclone.conf` in the container logs, even though
+the mount itself looks correct.
+
 The default `max_concurrent_downloads=1` (editable later from Settings in
 the UI) is deliberately conservative — both to avoid HDD seek-thrashing and
 to avoid Google flagging the account for too many concurrent Drive API

@@ -13,6 +13,13 @@ type FulfillmentSettings = {
   renameSpacesToUnderscores: boolean;
 };
 
+type DownloadPolicy = "EAGER" | "MANUAL" | "DISABLED";
+
+type ProviderSettings = {
+  providerId: string;
+  downloadPolicy: DownloadPolicy;
+};
+
 type Status = "loading" | "idle" | "saving" | "saved" | "error";
 
 const MIN_POLL_INTERVAL_SECONDS = 60;
@@ -41,6 +48,7 @@ export default function Settings() {
     <>
       <MailboxPollingSettings />
       <DownloadQueueSettings />
+      <ProviderPolicySettings />
       <DangerZone />
     </>
   );
@@ -265,6 +273,83 @@ function DownloadQueueSettings() {
       )}
       {status === "saved" && <p>Saved.</p>}
       {status === "error" && <p role="alert">Error: {errorMessage}</p>}
+    </section>
+  );
+}
+
+const POLICY_DESCRIPTIONS: Record<DownloadPolicy, string> = {
+  EAGER: "Downloads automatically once claimed",
+  MANUAL: "Only downloads when you click \"Download now\"",
+  DISABLED: "Ignored entirely - not even claimed or shown",
+};
+
+function ProviderPolicySettings() {
+  const [providers, setProviders] = useState<ProviderSettings[] | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  function refresh() {
+    fetch("/api/provider-settings")
+      .then((res) => {
+        if (!res.ok) throw new Error(`GET failed: ${res.status}`);
+        return res.json() as Promise<ProviderSettings[]>;
+      })
+      .then(setProviders)
+      .catch((err) => setErrorMessage(String(err)));
+  }
+
+  useEffect(refresh, []);
+
+  function updatePolicy(providerId: string, downloadPolicy: DownloadPolicy) {
+    setSavingId(providerId);
+    setErrorMessage(null);
+    fetch(`/api/provider-settings/${providerId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ downloadPolicy }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await extractErrorMessage(res));
+        refresh();
+      })
+      .catch((err) => setErrorMessage(err instanceof Error ? err.message : String(err)))
+      .finally(() => setSavingId(null));
+  }
+
+  return (
+    <section style={{ marginTop: "2rem" }}>
+      <h2>Provider policies</h2>
+      {providers === null && <p>Loading…</p>}
+      {providers !== null && (
+        <table style={{ borderCollapse: "collapse" }}>
+          <tbody>
+            {providers.map((provider) => (
+              <tr key={provider.providerId}>
+                <td style={{ padding: "0.25rem 1rem 0.25rem 0", fontWeight: "bold" }}>
+                  {provider.providerId}
+                </td>
+                <td style={{ padding: "0.25rem 1rem 0.25rem 0" }}>
+                  <select
+                    value={provider.downloadPolicy}
+                    disabled={savingId === provider.providerId}
+                    onChange={(e) =>
+                      updatePolicy(provider.providerId, e.target.value as DownloadPolicy)
+                    }
+                  >
+                    <option value="EAGER">EAGER</option>
+                    <option value="MANUAL">MANUAL</option>
+                    <option value="DISABLED">DISABLED</option>
+                  </select>
+                </td>
+                <td style={{ padding: "0.25rem 0", fontSize: "0.85em", color: "#57606a" }}>
+                  {POLICY_DESCRIPTIONS[provider.downloadPolicy]}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {errorMessage && <p role="alert">Error: {errorMessage}</p>}
     </section>
   );
 }

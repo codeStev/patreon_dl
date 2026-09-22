@@ -18,11 +18,26 @@ final class FilesystemNames {
 
     private static final Logger log = LoggerFactory.getLogger(FilesystemNames.class);
 
+    // Belt-and-braces against ENAMETOOLONG (Linux's ~255-byte NAME_MAX per
+    // path segment) - a real incident had a malformed email leak raw HTML
+    // into a "model name" via BulkamancerParser, which is now rejected at
+    // the parser level, but this also protects names sourced directly from
+    // real Drive file/folder names (FolderSyncJob), which no parser
+    // validates. 100 is comfortably under the byte limit even accounting
+    // for multi-byte UTF-8 characters in a typical name.
+    private static final int MAX_NAME_LENGTH = 100;
+
     private FilesystemNames() {
     }
 
     static String sanitize(String name) {
-        return name.replaceAll("[/\\\\:*?\"<>|]", "_");
+        String cleaned = name.replaceAll("[/\\\\:*?\"<>|]", "_");
+        if (cleaned.length() > MAX_NAME_LENGTH) {
+            log.warn("Truncating unexpectedly long name ({} chars) before using it as a directory name: {}",
+                    cleaned.length(), cleaned.substring(0, 40));
+            return cleaned.substring(0, MAX_NAME_LENGTH);
+        }
+        return cleaned;
     }
 
     // Optional post-download normalization (AppSettings.renameSpacesToUnderscores):

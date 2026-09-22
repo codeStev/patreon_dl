@@ -18,6 +18,13 @@ class FilesystemNamesTest {
     }
 
     @Test
+    void sanitizeTruncatesAnUnexpectedlyLongName() {
+        String result = FilesystemNames.sanitize("x".repeat(300));
+
+        assertThat(result).hasSize(100);
+    }
+
+    @Test
     void recursiveRenameReplacesSpacesInTheRootAndEveryDescendant(@TempDir Path tempDir) throws IOException {
         Path root = tempDir.resolve("Cool Dragon");
         Path nestedDir = root.resolve("sub folder");

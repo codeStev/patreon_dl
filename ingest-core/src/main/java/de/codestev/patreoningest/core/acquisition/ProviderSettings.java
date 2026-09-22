@@ -34,6 +34,11 @@ public class ProviderSettings {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public void updatePolicy(DownloadPolicy downloadPolicy) {
+        this.downloadPolicy = downloadPolicy;
+        this.updatedAt = LocalDateTime.now();
+    }
+
     public String getProviderId() {
         return providerId;
     }
