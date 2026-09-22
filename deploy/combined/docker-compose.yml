@@ -13,8 +13,12 @@ services:
       POSTGRES_DB: patreon_ingest
       POSTGRES_USER: app
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    # Mount the parent dir, not .../data - Postgres 18+ defaults PGDATA to a
+    # major-version-specific subdirectory under here (e.g. 18/docker), not
+    # .../data directly. Mounting .../data on 18+ means the volume never
+    # actually intersects with where Postgres writes, so nothing persists.
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d patreon_ingest"]
       interval: 10s

@@ -9,8 +9,14 @@ import jakarta.mail.Session;
 import jakarta.mail.Store;
 import jakarta.mail.UIDFolder;
 import jakarta.mail.internet.InternetAddress;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Condition;
+import org.springframework.context.annotation.ConditionContext;
+import org.springframework.context.annotation.Conditional;
+import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -20,10 +26,17 @@ import java.util.Properties;
 
 // Only active when patreon.imap.host is actually configured - inert in
 // tests and any deployment that hasn't set up a mailbox yet, so it never
-// collides with a test's own MailboxPort fake.
+// collides with a test's own MailboxPort fake. Deliberately NOT
+// @ConditionalOnProperty: that annotation treats a present-but-empty string
+// as satisfied (only an explicit "false" or a fully absent key fails it),
+// which is exactly what docker-compose's `${VAR:-}` substitution produces
+// when the .env value is unset - the key always exists, just empty. The
+// custom condition below checks for actual non-blank content instead.
 @Component
-@ConditionalOnProperty(prefix = "patreon.imap", name = "host")
+@Conditional(ImapMailboxAdapter.ImapHostConfigured.class)
 public class ImapMailboxAdapter implements MailboxPort {
+
+    private static final Logger log = LoggerFactory.getLogger(ImapMailboxAdapter.class);
 
     private final ImapProperties properties;
 
@@ -37,12 +50,17 @@ public class ImapMailboxAdapter implements MailboxPort {
         Properties sessionProperties = new Properties();
         sessionProperties.put("mail.store.protocol", protocol);
 
+        log.info("Connecting to IMAP {}:{} as {} (folder={}, ssl={})",
+                properties.host(), properties.port(), properties.username(), properties.folder(),
+                properties.useSsl());
+
         List<EmailMessage> messages = new ArrayList<>();
         Session session = Session.getInstance(sessionProperties);
         try (Store store = session.getStore(protocol)) {
             store.connect(properties.host(), properties.port(), properties.username(), properties.password());
             Folder folder = store.getFolder(properties.folder());
             folder.open(Folder.READ_ONLY);
+            log.info("IMAP connected - folder '{}' has {} message(s)", properties.folder(), folder.getMessageCount());
             try {
                 for (Message message : folder.getMessages()) {
                     messages.add(toEmailMessage(folder, message));
@@ -51,6 +69,7 @@ public class ImapMailboxAdapter implements MailboxPort {
                 folder.close(false);
             }
         } catch (MessagingException e) {
+            log.error("IMAP connection to {}:{} failed", properties.host(), properties.port(), e);
             throw new IllegalStateException("Failed to poll IMAP mailbox " + properties.folder(), e);
         }
         return messages;
@@ -99,6 +118,13 @@ public class ImapMailboxAdapter implements MailboxPort {
             throw e;
         } catch (Exception e) {
             throw new MessagingException("Failed to read message content", e);
+        }
+    }
+
+    static class ImapHostConfigured implements Condition {
+        @Override
+        public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
+            return StringUtils.hasText(context.getEnvironment().getProperty("patreon.imap.host"));
         }
     }
 }
