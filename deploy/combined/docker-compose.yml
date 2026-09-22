@@ -38,12 +38,22 @@ services:
       PATREON_IMAP_USERNAME: ${IMAP_USERNAME:-}
       PATREON_IMAP_PASSWORD: ${IMAP_PASSWORD:-}
       PATREON_IMAP_FOLDER: ${IMAP_FOLDER:-INBOX}
+      # rclone.conf is mounted read-only below - see "Setting up downloads"
+      # in the README for how to create it. Leaving it absent is fine until
+      # you're ready to download anything; nothing else in the app depends
+      # on it.
+      PATREON_FULFILLMENT_RCLONE_REMOTE_NAME: ${RCLONE_REMOTE_NAME:-gdrive}
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
     ports:
       - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    volumes:
+      # Where downloaded files actually land - point this at your real HDD
+      # mount point, not a Docker-managed volume.
+      - ${DOWNLOAD_PATH:-./downloads}:/downloads
+      - ${RCLONE_CONFIG_PATH:-./rclone.conf}:/config/rclone.conf:ro
 
 volumes:
   db-data:

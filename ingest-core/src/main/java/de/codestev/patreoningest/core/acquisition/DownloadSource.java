@@ -80,6 +80,19 @@ public class DownloadSource {
         this.claimedAt = LocalDateTime.now();
     }
 
+    public void markLinkDead() {
+        this.linkDead = true;
+    }
+
+    public void markSynced(boolean foundNewEntries) {
+        this.lastSynced = LocalDateTime.now();
+        if (foundNewEntries) {
+            this.quietSince = null;
+        } else if (this.quietSince == null) {
+            this.quietSince = LocalDateTime.now();
+        }
+    }
+
     public UUID getId() {
         return id;
     }

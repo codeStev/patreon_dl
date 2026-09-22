@@ -79,6 +79,43 @@ a reverse proxy with its own auth, or plain LAN-only). The default bind is
 `127.0.0.1` for exactly this reason; widen it only once you know how it's
 being exposed.
 
+## Setting up downloads
+
+File downloads (Fulfillment) go through [`rclone`](https://rclone.org),
+which needs a one-time interactive login to the personal Google account your
+Patreon links were shared to. This step is done **on your own machine, not
+by the container** — it's an OAuth login, not something to automate:
+
+```bash
+# Install rclone if you don't have it: https://rclone.org/install/
+rclone config
+# Choose "New remote", name it "gdrive" (or whatever you set
+# RCLONE_REMOTE_NAME to), type "drive" (Google Drive), and follow the
+# prompts - it opens a browser for you to authorize your Google account.
+```
+
+This writes an `rclone.conf` (by default `~/.config/rclone/rclone.conf`).
+Point `RCLONE_CONFIG_PATH` in `.env` at that file, and `DOWNLOAD_PATH` at
+where you actually want files to land (ideally your real HDD mount point,
+not wherever `docker compose` happens to run from):
+
+```
+DOWNLOAD_PATH=/mnt/my-hdd/patreon-downloads
+RCLONE_CONFIG_PATH=/home/you/.config/rclone/rclone.conf
+RCLONE_REMOTE_NAME=gdrive
+```
+
+`RCLONE_CONFIG_PATH` must already exist as a **file** before the first
+`docker compose up` — an absent path gets bind-mounted as an empty
+directory instead, which fails confusingly rather than clearly. If you
+haven't run `rclone config` yet, leave email polling running without it;
+nothing else in the app depends on it existing.
+
+The default `max_concurrent_downloads=1` (editable later from Settings in
+the UI) is deliberately conservative — both to avoid HDD seek-thrashing and
+to avoid Google flagging the account for too many concurrent Drive API
+requests. Raise it only if you know what you're doing.
+
 ## Developing
 
 Requires JDK 25, Docker (the test suite uses Testcontainers against a real
@@ -115,16 +152,24 @@ needs an explicit action to secure (Drive doesn't; Gumroad will).
 
 ## Current status
 
-Implemented and tested: Ingestion (real IMAP polling, dynamic
-user-configurable interval, the Nomnom parser), Acquisition (claim state
-machine, dedup, provider settings seeding), a minimal Admin API + React page
-for the poll interval, and CI/CD publishing the combined image.
+Implemented and tested: Ingestion (real IMAP polling with UID-based
+incremental fetch, dynamic user-configurable interval, all three creator
+parsers — Nomnom, Bulkamancer, Wicked — built against real sample emails),
+Acquisition (claim state machine, dedup, provider-policy enforcement
+including `DISABLED`, `FolderSyncJob` for living Drive folders), Fulfillment
+(the download queue itself: concurrency/allowed-hours dispatch policy,
+retry/backoff, the `rclone`-backed Drive downloader, manual "download now"
+trigger), and an Admin API + React UI covering settings for both polling and
+the download queue plus a live overview of every discovered source and item.
 
-Not yet built: Fulfillment (the actual download queue and file transfers),
-Gumroad's real claim flow, the Bulkamancer/Wicked parsers, and the rest of
-the admin UI (overview, per-provider settings, manual download triggers).
-See the design doc's "Open / unresolved" section for what's genuinely
-undecided versus just not-yet-implemented.
+Not yet built: Gumroad's real claim flow (`GumroadClaimAdapter` — Wicked
+sources stay `DISCOVERED` until this exists), `MmfDownloadAdapter` (MMF
+stays manual-retrieval), and `LinkHealthCheckJob` (the periodic re-check of
+already-quiet sources — a hard failure during an active download attempt
+already flags a source `link_dead` immediately; this job would additionally
+catch a link dying silently with no download attempt in flight). See the
+design doc's "Open / unresolved" section for what's genuinely undecided
+versus just not-yet-implemented.
 
 ## License
 

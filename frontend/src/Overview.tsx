@@ -41,7 +41,7 @@ export default function Overview() {
   const [state, setState] = useState<LoadState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refresh() {
     fetch("/api/sources")
       .then((res) => {
         if (!res.ok) throw new Error(`GET failed: ${res.status}`);
@@ -55,7 +55,9 @@ export default function Overview() {
         setErrorMessage(String(err));
         setState("error");
       });
-  }, []);
+  }
+
+  useEffect(refresh, []);
 
   if (state === "loading") {
     return <p>Loading…</p>;
@@ -104,6 +106,9 @@ export default function Overview() {
                   {item.status === "FAILED" && item.lastError && (
                     <span style={{ color: "#cf222e" }}> ({item.lastError})</span>
                   )}
+                  {(item.status === "PENDING" || item.status === "FAILED") && (
+                    <DownloadNowButton itemId={item.id} onDispatched={refresh} />
+                  )}
                 </li>
               ))}
             </ul>
@@ -115,5 +120,34 @@ export default function Overview() {
         </article>
       ))}
     </div>
+  );
+}
+
+function DownloadNowButton({ itemId, onDispatched }: { itemId: string; onDispatched: () => void }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function trigger() {
+    setPending(true);
+    setError(null);
+    fetch(`/api/download-items/${itemId}/download-now`, { method: "POST" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.message ?? `Request failed: ${res.status}`);
+        }
+        onDispatched();
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setPending(false));
+  }
+
+  return (
+    <>
+      <button onClick={trigger} disabled={pending} style={{ marginLeft: "0.5rem", fontSize: "0.85em" }}>
+        {pending ? "Starting…" : "Download now"}
+      </button>
+      {error && <span style={{ color: "#cf222e", fontSize: "0.85em" }}> {error}</span>}
+    </>
   );
 }

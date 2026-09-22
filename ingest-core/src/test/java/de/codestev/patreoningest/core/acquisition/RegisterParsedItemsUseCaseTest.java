@@ -33,6 +33,9 @@ class RegisterParsedItemsUseCaseTest {
     @Autowired
     private DownloadItemRepository downloadItemRepository;
 
+    @Autowired
+    private ProviderSettingsRepository providerSettingsRepository;
+
     private static final ParsedItem NOMNOM_JULY = new ParsedItem(
             "nomnom", "regular", "JULY", SourceType.DRIVE,
             "https://drive.example/folder/july", ClaimType.NONE, null);
@@ -104,5 +107,15 @@ class RegisterParsedItemsUseCaseTest {
                 .orElseThrow();
         assertThat(source.getClaimStatus()).isEqualTo(ClaimStatus.DISCOVERED);
         assertThat(source.getClaimedAt()).isNull();
+    }
+
+    @Test
+    void aDisabledProviderGetsNoSourceAtAll() {
+        providerSettingsRepository.save(new ProviderSettings("nomnom", DownloadPolicy.DISABLED));
+
+        registerParsedItemsUseCase.register(List.of(NOMNOM_JULY));
+
+        assertThat(downloadSourceRepository.findByCreatorAndSourceUrl(
+                "nomnom", "https://drive.example/folder/july")).isEmpty();
     }
 }

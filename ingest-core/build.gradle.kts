@@ -24,6 +24,14 @@ dependencies {
     implementation("jakarta.mail:jakarta.mail-api:2.1.3")
     runtimeOnly("org.eclipse.angus:angus-mail:2.0.3")
 
+    // Boot 4's dependency-management BOM already pulls this in transitively
+    // via flyway-core (Jackson 3 renamed its groupId/base package from
+    // com.fasterxml.jackson to tools.jackson - NOT a drop-in of the Jackson
+    // 2 API's package name, verified against the actual jar contents).
+    // Declared explicitly here since RcloneDriveFolderListingAdapter uses
+    // it directly, not just transitively.
+    implementation("tools.jackson.core:jackson-databind")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

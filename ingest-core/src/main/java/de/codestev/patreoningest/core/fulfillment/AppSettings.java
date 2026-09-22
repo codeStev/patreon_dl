@@ -44,6 +44,29 @@ public class AppSettings {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public void update(int maxConcurrentDownloads, Integer bandwidthLimitKbps, boolean ioNice,
+                        LocalTime allowedHoursStart, LocalTime allowedHoursEnd) {
+        this.maxConcurrentDownloads = maxConcurrentDownloads;
+        this.bandwidthLimitKbps = bandwidthLimitKbps;
+        this.ioNice = ioNice;
+        this.allowedHoursStart = allowedHoursStart;
+        this.allowedHoursEnd = allowedHoursEnd;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    // True when the given time falls inside the configured allowed-hours
+    // window (correctly handling a window that crosses midnight, e.g.
+    // 22:00-06:00). No window configured at all means always allowed.
+    public boolean allowsDownloadsAt(LocalTime time) {
+        if (allowedHoursStart == null || allowedHoursEnd == null) {
+            return true;
+        }
+        if (allowedHoursStart.isBefore(allowedHoursEnd)) {
+            return !time.isBefore(allowedHoursStart) && time.isBefore(allowedHoursEnd);
+        }
+        return !time.isBefore(allowedHoursStart) || time.isBefore(allowedHoursEnd);
+    }
+
     public long getId() {
         return id;
     }

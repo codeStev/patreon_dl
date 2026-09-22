@@ -12,13 +12,16 @@ public class RegisterParsedItemsUseCase {
     private final DownloadSourceRepository downloadSourceRepository;
     private final DownloadItemRepository downloadItemRepository;
     private final ClaimSourceUseCase claimSourceUseCase;
+    private final ProviderSettingsRepository providerSettingsRepository;
 
     public RegisterParsedItemsUseCase(DownloadSourceRepository downloadSourceRepository,
                                        DownloadItemRepository downloadItemRepository,
-                                       ClaimSourceUseCase claimSourceUseCase) {
+                                       ClaimSourceUseCase claimSourceUseCase,
+                                       ProviderSettingsRepository providerSettingsRepository) {
         this.downloadSourceRepository = downloadSourceRepository;
         this.downloadItemRepository = downloadItemRepository;
         this.claimSourceUseCase = claimSourceUseCase;
+        this.providerSettingsRepository = providerSettingsRepository;
     }
 
     public void register(List<ParsedItem> items) {
@@ -28,6 +31,15 @@ public class RegisterParsedItemsUseCase {
     }
 
     private void registerOne(ParsedItem item) {
+        boolean disabled = providerSettingsRepository.findById(item.creator())
+                .map(settings -> settings.getDownloadPolicy() == DownloadPolicy.DISABLED)
+                .orElse(false);
+        if (disabled) {
+            // "Don't even claim; ignore the provider entirely" - no source,
+            // no item, nothing shows up anywhere for a disabled provider.
+            return;
+        }
+
         Optional<DownloadSource> existing = downloadSourceRepository.findByCreatorAndSourceUrl(
                 item.creator(), item.sourceUrl());
 

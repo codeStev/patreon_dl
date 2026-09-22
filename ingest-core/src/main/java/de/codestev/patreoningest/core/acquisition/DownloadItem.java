@@ -54,6 +54,9 @@ public class DownloadItem {
     @Column(name = "downloaded_at")
     private LocalDateTime downloadedAt;
 
+    @Column(name = "next_attempt_at")
+    private LocalDateTime nextAttemptAt;
+
     protected DownloadItem() {
         // JPA
     }
@@ -65,6 +68,39 @@ public class DownloadItem {
         this.status = ItemStatus.PENDING;
         this.retryCount = 0;
         this.discoveredAt = LocalDateTime.now();
+    }
+
+    public void markDownloaded(String localPath, long fileSizeBytes) {
+        this.status = ItemStatus.DOWNLOADED;
+        this.localPath = localPath;
+        this.fileSizeBytes = fileSizeBytes;
+        this.downloadedAt = LocalDateTime.now();
+        this.lastError = null;
+        this.nextAttemptAt = null;
+    }
+
+    // Stays PENDING - the retry/backoff loop in ExecuteDownloadUseCase picks
+    // it back up once nextAttemptAt passes, up to its attempt cap.
+    public void recordTransientFailure(String error, LocalDateTime nextAttemptAt) {
+        this.retryCount++;
+        this.lastError = error;
+        this.nextAttemptAt = nextAttemptAt;
+    }
+
+    public void markFailedPermanently(String error) {
+        this.status = ItemStatus.FAILED;
+        this.lastError = error;
+        this.nextAttemptAt = null;
+    }
+
+    // Manual "download now" override: clears any backoff/attempt state so
+    // the next queue tick treats this as a fresh attempt regardless of how
+    // it previously failed.
+    public void resetForManualRetry() {
+        this.status = ItemStatus.PENDING;
+        this.retryCount = 0;
+        this.lastError = null;
+        this.nextAttemptAt = null;
     }
 
     public UUID getId() {
@@ -109,5 +145,9 @@ public class DownloadItem {
 
     public LocalDateTime getDownloadedAt() {
         return downloadedAt;
+    }
+
+    public LocalDateTime getNextAttemptAt() {
+        return nextAttemptAt;
     }
 }
