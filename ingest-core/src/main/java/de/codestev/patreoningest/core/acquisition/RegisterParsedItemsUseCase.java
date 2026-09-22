@@ -10,11 +10,14 @@ import java.util.Optional;
 public class RegisterParsedItemsUseCase {
 
     private final DownloadSourceRepository downloadSourceRepository;
+    private final DownloadItemRepository downloadItemRepository;
     private final ClaimSourceUseCase claimSourceUseCase;
 
     public RegisterParsedItemsUseCase(DownloadSourceRepository downloadSourceRepository,
+                                       DownloadItemRepository downloadItemRepository,
                                        ClaimSourceUseCase claimSourceUseCase) {
         this.downloadSourceRepository = downloadSourceRepository;
+        this.downloadItemRepository = downloadItemRepository;
         this.claimSourceUseCase = claimSourceUseCase;
     }
 
@@ -41,5 +44,15 @@ public class RegisterParsedItemsUseCase {
                 item.sourceType(), item.sourceUrl(), item.claimType());
         downloadSourceRepository.save(source);
         claimSourceUseCase.claim(source);
+
+        if (item.modelName() != null) {
+            // A clean 1:1 model<->link mapping (Bulkamancer's standalone
+            // DMs, Wicked's per-model Gumroad lines) - the parser already
+            // knows the exact model, so the item is created directly
+            // rather than waiting on a folder-diffing job that has nothing
+            // to diff here. remote_file_id stays null - unknown until
+            // actually downloaded.
+            downloadItemRepository.save(new DownloadItem(source, item.modelName(), null));
+        }
     }
 }

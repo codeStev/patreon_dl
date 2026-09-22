@@ -30,6 +30,9 @@ class RegisterParsedItemsUseCaseTest {
     @Autowired
     private DownloadSourceRepository downloadSourceRepository;
 
+    @Autowired
+    private DownloadItemRepository downloadItemRepository;
+
     private static final ParsedItem NOMNOM_JULY = new ParsedItem(
             "nomnom", "regular", "JULY", SourceType.DRIVE,
             "https://drive.example/folder/july", ClaimType.NONE, null);
@@ -62,5 +65,44 @@ class RegisterParsedItemsUseCaseTest {
                 .findByCreatorAndSourceUrl("nomnom", "https://drive.example/folder/july")
                 .orElseThrow();
         assertThat(source.getClaimStatus()).isEqualTo(ClaimStatus.CLAIMED);
+    }
+
+    @Test
+    void aNamedItemGetsItsOwnDownloadItemRow() {
+        ParsedItem bulkamancerWolverine = new ParsedItem("bulkamancer", null, null, SourceType.DRIVE,
+                "https://drive.example/folder/wolverine", ClaimType.NONE, "Wolverine");
+
+        registerParsedItemsUseCase.register(List.of(bulkamancerWolverine));
+
+        DownloadSource source = downloadSourceRepository
+                .findByCreatorAndSourceUrl("bulkamancer", "https://drive.example/folder/wolverine")
+                .orElseThrow();
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getModelName)
+                .containsExactly("Wolverine");
+    }
+
+    @Test
+    void aWholeFolderItemWithNoModelNameGetsNoDownloadItemRow() {
+        registerParsedItemsUseCase.register(List.of(NOMNOM_JULY));
+
+        DownloadSource source = downloadSourceRepository
+                .findByCreatorAndSourceUrl("nomnom", "https://drive.example/folder/july")
+                .orElseThrow();
+        assertThat(downloadItemRepository.findBySourceId(source.getId())).isEmpty();
+    }
+
+    @Test
+    void aGumroadItemStaysDiscoveredSinceNoClaimPortExistsYet() {
+        ParsedItem wickedItem = new ParsedItem("wicked", null, null, SourceType.GUMROAD,
+                "https://wicked.gumroad.com/l/example", ClaimType.GUMROAD, "Example Model");
+
+        registerParsedItemsUseCase.register(List.of(wickedItem));
+
+        DownloadSource source = downloadSourceRepository
+                .findByCreatorAndSourceUrl("wicked", "https://wicked.gumroad.com/l/example")
+                .orElseThrow();
+        assertThat(source.getClaimStatus()).isEqualTo(ClaimStatus.DISCOVERED);
+        assertThat(source.getClaimedAt()).isNull();
     }
 }

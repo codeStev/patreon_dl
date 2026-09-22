@@ -25,10 +25,19 @@ public class ClaimSourceUseCase {
                 .filter(p -> p.supports() == source.getSourceType())
                 .findFirst();
 
+        if (port.isEmpty() && source.getClaimType() != ClaimType.NONE) {
+            // A claim mechanism is genuinely expected for this source type
+            // (e.g. Gumroad) but no adapter for it exists yet - leave it
+            // DISCOVERED rather than silently (and incorrectly) marking it
+            // claimed. This is different from DRIVE/MMF, which have no
+            // ClaimPort because none is ever needed, not because one is
+            // missing.
+            return;
+        }
+
         // A registered ClaimPort performs the real external action (e.g.
-        // Gumroad checkout); no port at all means claiming is implicit for
-        // this source type (DRIVE, MMF) - either way the source ends up
-        // CLAIMED.
+        // Gumroad checkout); no port at all AND claimType == NONE means
+        // claiming is implicit for this source type (DRIVE, MMF).
         port.ifPresent(p -> p.claim(source));
 
         source.markClaimed();

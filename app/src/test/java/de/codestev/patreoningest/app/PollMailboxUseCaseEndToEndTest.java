@@ -65,8 +65,12 @@ class PollMailboxUseCaseEndToEndTest {
     }
 
     private static EmailMessage nomnomMessage(long uid) {
-        return new EmailMessage("inbox", uid, "msg-" + uid, "updates@nomnom.example",
-                "New models", NOMNOM_EMAIL_BODY, LocalDateTime.of(2026, 9, 1, 12, 0));
+        // All real Patreon DM notifications come from the same Patreon
+        // system address regardless of creator - NomnomParser matches on
+        // subject, not from-address.
+        return new EmailMessage("inbox", uid, "msg-" + uid, "no-reply@community.patreon.com",
+                "Nomnom Figures hat dir eine Nachricht gesendet", NOMNOM_EMAIL_BODY,
+                LocalDateTime.of(2026, 9, 1, 12, 0));
     }
 
     @Test

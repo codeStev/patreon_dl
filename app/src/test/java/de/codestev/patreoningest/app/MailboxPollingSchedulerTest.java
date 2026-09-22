@@ -54,7 +54,8 @@ class MailboxPollingSchedulerTest {
         InMemoryMailboxPort mailboxPort() {
             InMemoryMailboxPort port = new InMemoryMailboxPort();
             port.setMessages(List.of(new EmailMessage("inbox", 99L, "msg-99",
-                    "updates@nomnom.example", "New models", NOMNOM_EMAIL_BODY, LocalDateTime.now())));
+                    "no-reply@community.patreon.com", "Nomnom Figures hat dir eine Nachricht gesendet",
+                    NOMNOM_EMAIL_BODY, LocalDateTime.now())));
             return port;
         }
     }
