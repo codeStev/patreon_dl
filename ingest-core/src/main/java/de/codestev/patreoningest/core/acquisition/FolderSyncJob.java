@@ -45,7 +45,25 @@ public class FolderSyncJob {
     }
 
     private void syncOne(DownloadSource source) {
-        String folderId = GoogleDriveUrls.extractFolderId(source.getSourceUrl());
+        String folderId;
+        try {
+            folderId = GoogleDriveUrls.extractFolderId(source.getSourceUrl());
+        } catch (IllegalArgumentException e) {
+            // Not a folder link at all (e.g. a Drive single-file share,
+            // "/file/d/<id>/view", which a parser can legitimately produce
+            // but this job only ever handles folders) - deterministically
+            // unfixable by retrying, unlike a real rclone/network failure.
+            // Flag it once so it's visible (reusing link_dead - there's no
+            // separate "unsupported" status) and excluded from every future
+            // sync, rather than logging the same error every 30 minutes
+            // forever.
+            log.warn("Source {} ({}) is not a Drive folder link - flagging link-dead instead of retrying forever",
+                    source.getId(), source.getSourceUrl());
+            source.markLinkDead();
+            downloadSourceRepository.save(source);
+            return;
+        }
+
         List<DriveEntry> entries = driveFolderListing.list(folderId);
 
         boolean foundNew = false;

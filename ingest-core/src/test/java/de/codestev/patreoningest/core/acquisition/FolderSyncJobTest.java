@@ -153,6 +153,24 @@ class FolderSyncJobTest {
     }
 
     @Test
+    void aNonFolderUrlIsFlaggedLinkDeadInsteadOfRetriedForever() {
+        // Real incident: a parser can legitimately produce a Drive
+        // single-file share link ("/file/d/<id>/view"), which this job
+        // can't sync (it only handles folders) - retrying that every 30
+        // minutes forever would just spam the same error indefinitely.
+        DownloadSource source = claimedSource("https://drive.google.com/file/d/some-file-id/view?usp=sharing");
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadSourceRepository.findById(source.getId()).orElseThrow().isLinkDead()).isTrue();
+
+        // A second run must not even attempt it again - it's now excluded
+        // from the CLAIMED-and-not-linkDead candidate query entirely.
+        folderSyncJob.syncAll();
+        assertThat(downloadItemRepository.findBySourceId(source.getId())).isEmpty();
+    }
+
+    @Test
     void oneBadSourceDoesNotStopTheRestOfTheSync() {
         DownloadSource malformed = claimedSource("https://drive.google.com/not-a-folder-url");
         DownloadSource good = claimedSource("https://drive.google.com/drive/folders/folder-7");
