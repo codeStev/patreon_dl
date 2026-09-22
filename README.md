@@ -121,6 +121,17 @@ Symptom if you skip this: `FolderSyncJob`/downloads fail with `permission
 denied` reading `/config/rclone.conf` in the container logs, even though
 the mount itself looks correct.
 
+The same UID mismatch applies to `DOWNLOAD_PATH` itself — Docker
+auto-creates a missing bind-mount host directory owned by root, which the
+container's non-root user can traverse into but not write to:
+```bash
+sudo chown -R 1001:1001 /path/to/your/download/path
+```
+(`1001` matches the fixed non-root uid the runtime image's `spring` user is
+created with). Symptom if you skip this: downloads fail with `Could not
+create target directory ...` in the logs, retried on the normal backoff
+schedule until they eventually give up.
+
 The default `max_concurrent_downloads=1` (editable later from Settings in
 the UI) is deliberately conservative — both to avoid HDD seek-thrashing and
 to avoid Google flagging the account for too many concurrent Drive API

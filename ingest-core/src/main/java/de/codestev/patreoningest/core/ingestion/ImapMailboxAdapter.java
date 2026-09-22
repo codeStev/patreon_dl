@@ -126,10 +126,10 @@ public class ImapMailboxAdapter implements MailboxPort {
     private static String extractPlainText(Message message) throws MessagingException {
         try {
             Object content = message.getContent();
+            String raw;
             if (content instanceof String text) {
-                return text;
-            }
-            if (content instanceof Multipart multipart) {
+                raw = text;
+            } else if (content instanceof Multipart multipart) {
                 StringBuilder builder = new StringBuilder();
                 for (int i = 0; i < multipart.getCount(); i++) {
                     BodyPart part = multipart.getBodyPart(i);
@@ -137,14 +137,27 @@ public class ImapMailboxAdapter implements MailboxPort {
                         builder.append(part.getContent());
                     }
                 }
-                return builder.toString();
+                raw = builder.toString();
+            } else {
+                raw = "";
             }
-            return "";
+            return stripStrayHtml(raw);
         } catch (MessagingException e) {
             throw e;
         } catch (Exception e) {
             throw new MessagingException("Failed to read message content", e);
         }
+    }
+
+    // Real incident: a Bulkamancer notification's text/plain part contained
+    // an entire raw HTML template block with no line break before a
+    // legitimate "Name: <url>" line - the sender's own plain-text
+    // generation apparently failed for that one entry. Stripping tag-shaped
+    // markup here (rather than in each parser) fixes it for every parser at
+    // the source; a no-op for genuinely plain text, since real content
+    // essentially never contains a well-formed "<...>" sequence.
+    private static String stripStrayHtml(String text) {
+        return text.replaceAll("<[^>]+>", "");
     }
 
     static class ImapHostConfigured implements Condition {

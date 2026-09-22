@@ -56,6 +56,23 @@ class ImapMailboxAdapterTest {
         assertThat(message.body()).contains("https://drive.google.com/drive/folders/greenmail");
     }
 
+    // Reproduces a real incident: a notification's plain-text body
+    // contained a raw HTML template block with no line break before a
+    // legitimate "Name: <url>" line, corrupting downstream parsing.
+    @Test
+    void strayHtmlMarkupInThePlainTextBodyIsStrippedBeforeParsersSeeIt() {
+        GreenMailUtil.sendTextEmailTest("testuser@localhost", "updates@bulkamancer.example", "Bulkamancer",
+                "<div style=\"color:#000000;\"><p>Richter: "
+                        + "https://drive.google.com/drive/folders/richter</p></div>");
+        when(processedEmailRepository.findMaxUidByMailbox("INBOX")).thenReturn(Optional.empty());
+
+        List<EmailMessage> messages = adapter().fetchNewMessages();
+
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).body())
+                .isEqualTo("Richter: https://drive.google.com/drive/folders/richter");
+    }
+
     private ImapMailboxAdapter adapter() {
         ImapProperties properties = new ImapProperties(
                 "localhost", ServerSetupTest.IMAP.getPort(), "testuser@localhost", "password", "INBOX", false);
