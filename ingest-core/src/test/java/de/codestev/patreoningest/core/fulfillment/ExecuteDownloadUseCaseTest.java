@@ -8,6 +8,7 @@ import de.codestev.patreoningest.core.acquisition.DownloadSource;
 import de.codestev.patreoningest.core.acquisition.DownloadSourceRepository;
 import de.codestev.patreoningest.core.acquisition.ItemStatus;
 import de.codestev.patreoningest.core.acquisition.SourceType;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,12 +16,18 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +42,16 @@ class ExecuteDownloadUseCaseTest {
     @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:18");
 
+    @DynamicPropertySource
+    static void downloadRoot(DynamicPropertyRegistry registry) {
+        try {
+            Path tempDownloadRoot = Files.createTempDirectory("execute-download-use-case-test");
+            registry.add("patreon.fulfillment.download-root", () -> tempDownloadRoot.toString());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     @Autowired
     private ExecuteDownloadUseCase executeDownloadUseCase;
 
@@ -43,6 +60,9 @@ class ExecuteDownloadUseCaseTest {
 
     @Autowired
     private DownloadItemRepository downloadItemRepository;
+
+    @Autowired
+    private AppSettingsRepository appSettingsRepository;
 
     @Autowired
     private FakeSourceDownloader fakeSourceDownloader;
@@ -58,6 +78,16 @@ class ExecuteDownloadUseCaseTest {
         FakeSourceDownloader fakeSourceDownloader() {
             return new FakeSourceDownloader();
         }
+    }
+
+    @AfterEach
+    void resetFake() {
+        // The @TestConfiguration bean is shared across every test method in
+        // this class (Spring caches the context) - without this, a mode set
+        // by one test (e.g. willSucceedByCreatingSpacedFilesUnderTargetDir)
+        // leaks into the next one regardless of @Transactional, since that
+        // only rolls back the database, not in-memory test-double state.
+        fakeSourceDownloader.reset();
     }
 
     private DownloadItem pendingItem(String sourceUrl) {
@@ -124,6 +154,26 @@ class ExecuteDownloadUseCaseTest {
         assertThat(reloaded.getStatus()).isEqualTo(ItemStatus.FAILED);
         assertThat(downloadSourceRepository.findById(reloaded.getSource().getId()))
                 .hasValueSatisfying(source -> assertThat(source.isLinkDead()).isFalse());
+    }
+
+    @Test
+    void renameSpacesToUnderscoresRenamesTheDownloadedTreeWhenEnabled() {
+        AppSettings settings = appSettingsRepository.findById(1L).orElseThrow();
+        settings.update(settings.getMaxConcurrentDownloads(), settings.getBandwidthLimitKbps(),
+                settings.isIoNice(), settings.getAllowedHoursStart(), settings.getAllowedHoursEnd(), true);
+        appSettingsRepository.save(settings);
+
+        DownloadItem item = pendingItem("https://drive.example/folder/spaced");
+        fakeSourceDownloader.willSucceedByCreatingSpacedFilesUnderTargetDir();
+
+        executeDownloadUseCase.execute(item.getId());
+
+        DownloadItem reloaded = downloadItemRepository.findById(item.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(ItemStatus.DOWNLOADED);
+        Path renamedRoot = Path.of(reloaded.getLocalPath());
+        assertThat(renamedRoot.getFileName().toString()).doesNotContain(" ");
+        assertThat(Files.exists(renamedRoot.resolve("top_level.txt"))).isTrue();
+        assertThat(Files.exists(renamedRoot.resolve("nested_folder/deep_file.txt"))).isTrue();
     }
 
     @Test

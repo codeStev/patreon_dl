@@ -84,7 +84,7 @@ class RunDownloadQueueTickUseCaseTest {
         downloadSourceRepository.deleteAll();
         providerSettingsRepository.deleteAll();
         AppSettings settings = appSettingsRepository.findById(1L).orElseThrow();
-        settings.update(1, null, true, null, null);
+        settings.update(1, null, true, null, null, false);
         appSettingsRepository.save(settings);
     }
 
@@ -124,7 +124,7 @@ class RunDownloadQueueTickUseCaseTest {
     @Test
     void dispatchCountNeverExceedsMaxConcurrentDownloads() {
         AppSettings settings = appSettingsRepository.findById(1L).orElseThrow();
-        settings.update(2, null, true, null, null);
+        settings.update(2, null, true, null, null, false);
         appSettingsRepository.save(settings);
 
         providerSettingsRepository.save(new ProviderSettings("bulkamancer", DownloadPolicy.EAGER));

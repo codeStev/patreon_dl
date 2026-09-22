@@ -7,6 +7,7 @@ public record FulfillmentSettingsResponse(
         Integer bandwidthLimitKbps,
         boolean ioNice,
         LocalTime allowedHoursStart,
-        LocalTime allowedHoursEnd
+        LocalTime allowedHoursEnd,
+        boolean renameSpacesToUnderscores
 ) {
 }

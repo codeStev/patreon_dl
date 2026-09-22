@@ -9,6 +9,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AppSettingsTest {
 
     @Test
+    void renameSpacesToUnderscoresDefaultsToFalse() {
+        AppSettings settings = new AppSettings(1L, 1, true);
+
+        assertThat(settings.isRenameSpacesToUnderscores()).isFalse();
+    }
+
+    @Test
     void allowsDownloadsAtAnyTimeWhenNoWindowIsConfigured() {
         AppSettings settings = new AppSettings(1L, 1, true);
 
@@ -19,7 +26,7 @@ class AppSettingsTest {
     @Test
     void respectsASimpleDaytimeWindow() {
         AppSettings settings = new AppSettings(1L, 1, true);
-        settings.update(1, null, true, LocalTime.of(9, 0), LocalTime.of(17, 0));
+        settings.update(1, null, true, LocalTime.of(9, 0), LocalTime.of(17, 0), false);
 
         assertThat(settings.allowsDownloadsAt(LocalTime.of(8, 59))).isFalse();
         assertThat(settings.allowsDownloadsAt(LocalTime.of(9, 0))).isTrue();
@@ -30,7 +37,7 @@ class AppSettingsTest {
     @Test
     void handlesAWindowThatCrossesMidnight() {
         AppSettings settings = new AppSettings(1L, 1, true);
-        settings.update(1, null, true, LocalTime.of(22, 0), LocalTime.of(6, 0));
+        settings.update(1, null, true, LocalTime.of(22, 0), LocalTime.of(6, 0), false);
 
         assertThat(settings.allowsDownloadsAt(LocalTime.of(23, 0))).isTrue();
         assertThat(settings.allowsDownloadsAt(LocalTime.of(3, 0))).isTrue();

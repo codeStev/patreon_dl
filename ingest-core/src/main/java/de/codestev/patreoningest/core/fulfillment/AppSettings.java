@@ -30,6 +30,9 @@ public class AppSettings {
     @Column(name = "allowed_hours_end")
     private LocalTime allowedHoursEnd;
 
+    @Column(name = "rename_spaces_to_underscores", nullable = false)
+    private boolean renameSpacesToUnderscores;
+
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
@@ -45,12 +48,14 @@ public class AppSettings {
     }
 
     public void update(int maxConcurrentDownloads, Integer bandwidthLimitKbps, boolean ioNice,
-                        LocalTime allowedHoursStart, LocalTime allowedHoursEnd) {
+                        LocalTime allowedHoursStart, LocalTime allowedHoursEnd,
+                        boolean renameSpacesToUnderscores) {
         this.maxConcurrentDownloads = maxConcurrentDownloads;
         this.bandwidthLimitKbps = bandwidthLimitKbps;
         this.ioNice = ioNice;
         this.allowedHoursStart = allowedHoursStart;
         this.allowedHoursEnd = allowedHoursEnd;
+        this.renameSpacesToUnderscores = renameSpacesToUnderscores;
         this.updatedAt = LocalDateTime.now();
     }
 
@@ -93,5 +98,9 @@ public class AppSettings {
 
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+
+    public boolean isRenameSpacesToUnderscores() {
+        return renameSpacesToUnderscores;
     }
 }

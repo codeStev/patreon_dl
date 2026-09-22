@@ -36,7 +36,19 @@ class FulfillmentSettingsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.maxConcurrentDownloads").value(1))
                 .andExpect(jsonPath("$.ioNice").value(true))
-                .andExpect(jsonPath("$.bandwidthLimitKbps").doesNotExist());
+                .andExpect(jsonPath("$.bandwidthLimitKbps").doesNotExist())
+                .andExpect(jsonPath("$.renameSpacesToUnderscores").value(false));
+    }
+
+    @Test
+    void putCanEnableRenameSpacesToUnderscores() throws Exception {
+        mockMvc.perform(put("/api/fulfillment-settings")
+                        .contentType("application/json")
+                        .content("""
+                                {"maxConcurrentDownloads": 1, "ioNice": true, "renameSpacesToUnderscores": true}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.renameSpacesToUnderscores").value(true));
     }
 
     @Test

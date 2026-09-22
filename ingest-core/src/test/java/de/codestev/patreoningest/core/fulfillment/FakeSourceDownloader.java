@@ -3,6 +3,9 @@ package de.codestev.patreoningest.core.fulfillment;
 import de.codestev.patreoningest.core.acquisition.DownloadItem;
 import de.codestev.patreoningest.core.acquisition.SourceType;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -16,6 +19,7 @@ class FakeSourceDownloader implements SourceDownloader {
     private volatile DownloadResult nextResult;
     private volatile DownloadFailedException nextException;
     private volatile long delayMillis;
+    private volatile boolean createSpacedFilesUnderTargetDir;
     private final AtomicInteger callCount = new AtomicInteger();
 
     @Override
@@ -36,7 +40,22 @@ class FakeSourceDownloader implements SourceDownloader {
         if (nextException != null) {
             throw nextException;
         }
+        if (createSpacedFilesUnderTargetDir) {
+            return createSpacedFilesUnder(targetDir);
+        }
         return nextResult;
+    }
+
+    private static DownloadResult createSpacedFilesUnder(Path targetDir) {
+        try {
+            Path nested = targetDir.resolve("nested folder");
+            Files.createDirectories(nested);
+            Files.writeString(targetDir.resolve("top level.txt"), "x");
+            Files.writeString(nested.resolve("deep file.txt"), "xx");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return new DownloadResult(targetDir.toString(), 3L);
     }
 
     // Keeps a dispatched task "in flight" long enough for a test to observe
@@ -55,6 +74,11 @@ class FakeSourceDownloader implements SourceDownloader {
         this.nextResult = null;
     }
 
+    void willSucceedByCreatingSpacedFilesUnderTargetDir() {
+        this.createSpacedFilesUnderTargetDir = true;
+        this.nextException = null;
+    }
+
     int callCount() {
         return callCount.get();
     }
@@ -67,5 +91,6 @@ class FakeSourceDownloader implements SourceDownloader {
         delayMillis = 0;
         nextResult = null;
         nextException = null;
+        createSpacedFilesUnderTargetDir = false;
     }
 }

@@ -10,6 +10,7 @@ type FulfillmentSettings = {
   ioNice: boolean;
   allowedHoursStart: string | null;
   allowedHoursEnd: string | null;
+  renameSpacesToUnderscores: boolean;
 };
 
 type Status = "loading" | "idle" | "saving" | "saved" | "error";
@@ -40,6 +41,7 @@ export default function Settings() {
     <>
       <MailboxPollingSettings />
       <DownloadQueueSettings />
+      <DangerZone />
     </>
   );
 }
@@ -219,6 +221,17 @@ function DownloadQueueSettings() {
               Use low I/O priority (ionice) for downloads
             </label>
 
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={settings.renameSpacesToUnderscores}
+                onChange={(e) =>
+                  setSettings({ ...settings, renameSpacesToUnderscores: e.target.checked })
+                }
+              />
+              Rename downloaded files/folders: replace spaces with underscores
+            </label>
+
             <div>
               <span>Allowed hours (blank = no restriction)</span>
               <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem", alignItems: "center" }}>
@@ -251,6 +264,51 @@ function DownloadQueueSettings() {
         </>
       )}
       {status === "saved" && <p>Saved.</p>}
+      {status === "error" && <p role="alert">Error: {errorMessage}</p>}
+    </section>
+  );
+}
+
+function DangerZone() {
+  const [status, setStatus] = useState<"idle" | "resetting" | "done" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  function resetTracking() {
+    if (
+      !confirm(
+        "Reset ingest tracking? This forces a full mailbox rescan on the next " +
+          "poll - already-registered sources/items and download history are " +
+          "untouched. Use this if you changed a parser and need it to see " +
+          "emails it already looked at."
+      )
+    ) {
+      return;
+    }
+    setStatus("resetting");
+    setErrorMessage(null);
+    fetch("/api/ingestion/reset-tracking", { method: "POST" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        setStatus("done");
+      })
+      .catch((err) => {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+        setStatus("error");
+      });
+  }
+
+  return (
+    <section style={{ marginTop: "2rem", border: "1px solid #cf222e", borderRadius: 6, padding: "1rem" }}>
+      <h2 style={{ marginTop: 0, color: "#cf222e" }}>Danger zone</h2>
+      <p style={{ fontSize: "0.9em" }}>
+        Clears the mailbox's processed-email tracking so the next poll
+        rescans everything from scratch. Does not touch discovered sources,
+        items, or what's already been downloaded.
+      </p>
+      <button onClick={resetTracking} disabled={status === "resetting"}>
+        {status === "resetting" ? "Resetting…" : "Reset ingest tracking"}
+      </button>
+      {status === "done" && <p>Done - the next poll will rescan the whole mailbox.</p>}
       {status === "error" && <p role="alert">Error: {errorMessage}</p>}
     </section>
   );

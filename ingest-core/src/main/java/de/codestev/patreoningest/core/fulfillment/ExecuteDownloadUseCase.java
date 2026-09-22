@@ -86,7 +86,14 @@ public class ExecuteDownloadUseCase {
 
         try {
             DownloadResult result = downloader.get().fetch(item, targetDir, options);
-            item.markDownloaded(result.localPath(), result.fileSizeBytes());
+            String localPath = result.localPath();
+            if (settings.isRenameSpacesToUnderscores()) {
+                // Renamed before the item is marked DOWNLOADED, since the
+                // user moves folders out of downloadRoot afterward - this
+                // is the only point where the app still controls the path.
+                localPath = FilesystemNames.renameSpacesToUnderscoresRecursively(Path.of(localPath)).toString();
+            }
+            item.markDownloaded(localPath, result.fileSizeBytes());
             downloadItemRepository.save(item);
             log.info("Downloaded item {} ({} bytes) to {}", item.getId(), result.fileSizeBytes(), result.localPath());
         } catch (DownloadFailedException e) {

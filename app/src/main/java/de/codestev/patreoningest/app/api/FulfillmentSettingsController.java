@@ -42,8 +42,10 @@ public class FulfillmentSettingsController {
         }
 
         AppSettings settings = currentSettings();
-        settings.update(request.maxConcurrentDownloads(), request.bandwidthLimitKbps(), request.ioNice(),
-                request.allowedHoursStart(), request.allowedHoursEnd());
+        settings.update(request.maxConcurrentDownloads(), request.bandwidthLimitKbps(),
+                Boolean.TRUE.equals(request.ioNice()),
+                request.allowedHoursStart(), request.allowedHoursEnd(),
+                Boolean.TRUE.equals(request.renameSpacesToUnderscores()));
         appSettingsRepository.save(settings);
         return ResponseEntity.ok(toResponse(settings));
     }
@@ -56,6 +58,7 @@ public class FulfillmentSettingsController {
     private static FulfillmentSettingsResponse toResponse(AppSettings settings) {
         return new FulfillmentSettingsResponse(
                 settings.getMaxConcurrentDownloads(), settings.getBandwidthLimitKbps(), settings.isIoNice(),
-                settings.getAllowedHoursStart(), settings.getAllowedHoursEnd());
+                settings.getAllowedHoursStart(), settings.getAllowedHoursEnd(),
+                settings.isRenameSpacesToUnderscores());
     }
 }
