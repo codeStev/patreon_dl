@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 
 // Only active when patreon.imap.host is actually configured - inert in
@@ -39,9 +40,11 @@ public class ImapMailboxAdapter implements MailboxPort {
     private static final Logger log = LoggerFactory.getLogger(ImapMailboxAdapter.class);
 
     private final ImapProperties properties;
+    private final ProcessedEmailRepository processedEmailRepository;
 
-    public ImapMailboxAdapter(ImapProperties properties) {
+    public ImapMailboxAdapter(ImapProperties properties, ProcessedEmailRepository processedEmailRepository) {
         this.properties = properties;
+        this.processedEmailRepository = processedEmailRepository;
     }
 
     @Override
@@ -60,9 +63,9 @@ public class ImapMailboxAdapter implements MailboxPort {
             store.connect(properties.host(), properties.port(), properties.username(), properties.password());
             Folder folder = store.getFolder(properties.folder());
             folder.open(Folder.READ_ONLY);
-            log.info("IMAP connected - folder '{}' has {} message(s)", properties.folder(), folder.getMessageCount());
+            log.info("IMAP connected - folder '{}' has {} message(s) total", properties.folder(), folder.getMessageCount());
             try {
-                for (Message message : folder.getMessages()) {
+                for (Message message : messagesToFetch(folder)) {
                     messages.add(toEmailMessage(folder, message));
                 }
             } finally {
@@ -73,6 +76,29 @@ public class ImapMailboxAdapter implements MailboxPort {
             throw new IllegalStateException("Failed to poll IMAP mailbox " + properties.folder(), e);
         }
         return messages;
+    }
+
+    // Only ever fetch messages newer than the highest UID already recorded
+    // for this mailbox - never re-scan the whole folder on every poll. The
+    // very first poll ever for a mailbox has no prior record, so it starts
+    // from UID 1 and does scan everything currently there once (a personal
+    // inbox's existing Patreon history is exactly what should be picked up)
+    // - the fix is that every poll AFTER that is incremental, not that the
+    // first one is free. A years-old inbox pointed at this adapter means one
+    // slow initial pass, never a repeated one.
+    private Message[] messagesToFetch(Folder folder) throws MessagingException {
+        if (!(folder instanceof UIDFolder uidFolder)) {
+            log.warn("IMAP server does not support UIDs - falling back to fetching the whole folder every poll");
+            return folder.getMessages();
+        }
+
+        long startUid = processedEmailRepository.findMaxUidByMailbox(properties.folder())
+                .map(uid -> uid + 1)
+                .orElse(1L);
+
+        Message[] found = uidFolder.getMessagesByUID(startUid, UIDFolder.LASTUID);
+        log.info("Fetching messages with UID >= {} ({} found)", startUid, found.length);
+        return found;
     }
 
     private EmailMessage toEmailMessage(Folder folder, Message message) throws MessagingException {
