@@ -48,7 +48,12 @@ public class RcloneDriveDownloadAdapter implements SourceDownloader {
         try {
             Files.createDirectories(targetDir);
         } catch (IOException e) {
-            throw new DownloadFailedException("Could not create target directory " + targetDir, false, e);
+            // Include the real cause's message - "Could not create target
+            // directory X" alone hid whether it was a permissions issue,
+            // a full disk, a read-only filesystem, or something else
+            // entirely, forcing a guessing game in the logs.
+            throw new DownloadFailedException(
+                    "Could not create target directory " + targetDir + ": " + e.getMessage(), false, e);
         }
 
         List<String> command = buildCommand(folderId, targetDir, options);

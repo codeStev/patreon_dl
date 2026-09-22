@@ -107,16 +107,20 @@ public class ExecuteDownloadUseCase {
             item.getSource().markLinkDead();
             downloadSourceRepository.save(item.getSource());
             log.error("Item {} failed permanently - flagging source {} link-dead: {}",
-                    item.getId(), item.getSource().getId(), e.getMessage());
+                    item.getId(), item.getSource().getId(), e.getMessage(), e);
         } else if (item.getRetryCount() >= MAX_ATTEMPTS) {
             item.markFailedPermanently(e.getMessage());
             log.error("Item {} exceeded {} retry attempts, giving up: {}",
-                    item.getId(), MAX_ATTEMPTS, e.getMessage());
+                    item.getId(), MAX_ATTEMPTS, e.getMessage(), e);
         } else {
             LocalDateTime nextAttempt = LocalDateTime.now().plusMinutes(BACKOFF_MINUTES[item.getRetryCount()]);
             item.recordTransientFailure(e.getMessage(), nextAttempt);
+            // Trailing `e` (beyond the placeholders) makes SLF4J print the
+            // full stack trace too - a bare e.getMessage() string previously
+            // hid the actual cause (e.g. the real IOException reason) from
+            // anyone reading the logs.
             log.warn("Item {} failed transiently (attempt {}/{}), retrying at {}: {}",
-                    item.getId(), item.getRetryCount(), MAX_ATTEMPTS, nextAttempt, e.getMessage());
+                    item.getId(), item.getRetryCount(), MAX_ATTEMPTS, nextAttempt, e.getMessage(), e);
         }
         downloadItemRepository.save(item);
     }
