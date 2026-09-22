@@ -1,0 +1,134 @@
+package de.codestev.patreoningest.core.acquisition;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Entity
+@Table(name = "download_source")
+public class DownloadSource {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @Column(nullable = false)
+    private String creator;
+
+    private String category;
+
+    @Column(name = "month_label")
+    private String monthLabel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", nullable = false)
+    private SourceType sourceType;
+
+    @Column(name = "source_url", nullable = false)
+    private String sourceUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "claim_type")
+    private ClaimType claimType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "claim_status", nullable = false)
+    private ClaimStatus claimStatus;
+
+    @Column(name = "first_seen")
+    private LocalDateTime firstSeen;
+
+    @Column(name = "last_synced")
+    private LocalDateTime lastSynced;
+
+    @Column(name = "claimed_at")
+    private LocalDateTime claimedAt;
+
+    @Column(name = "quiet_since")
+    private LocalDateTime quietSince;
+
+    @Column(name = "link_dead", nullable = false)
+    private boolean linkDead;
+
+    protected DownloadSource() {
+        // JPA
+    }
+
+    public DownloadSource(String creator, String category, String monthLabel,
+                           SourceType sourceType, String sourceUrl, ClaimType claimType) {
+        this.creator = creator;
+        this.category = category;
+        this.monthLabel = monthLabel;
+        this.sourceType = sourceType;
+        this.sourceUrl = sourceUrl;
+        this.claimType = claimType;
+        this.claimStatus = ClaimStatus.DISCOVERED;
+        this.firstSeen = LocalDateTime.now();
+        this.linkDead = false;
+    }
+
+    public void markClaimed() {
+        this.claimStatus = ClaimStatus.CLAIMED;
+        this.claimedAt = LocalDateTime.now();
+    }
+
+    public UUID getId() {
+        return id;
+    }
+
+    public String getCreator() {
+        return creator;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public String getMonthLabel() {
+        return monthLabel;
+    }
+
+    public SourceType getSourceType() {
+        return sourceType;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public ClaimType getClaimType() {
+        return claimType;
+    }
+
+    public ClaimStatus getClaimStatus() {
+        return claimStatus;
+    }
+
+    public LocalDateTime getFirstSeen() {
+        return firstSeen;
+    }
+
+    public LocalDateTime getLastSynced() {
+        return lastSynced;
+    }
+
+    public LocalDateTime getClaimedAt() {
+        return claimedAt;
+    }
+
+    public LocalDateTime getQuietSince() {
+        return quietSince;
+    }
+
+    public boolean isLinkDead() {
+        return linkDead;
+    }
+}

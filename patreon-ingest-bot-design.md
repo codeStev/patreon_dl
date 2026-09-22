@@ -11,12 +11,18 @@ downloads files — with easy support for adding new providers later.
 
 ## Stack
 
-- Spring Boot 3.5, Java 21
-- Postgres (metadata/state)
+- Spring Boot 4.1, Java 25 (updated from the original 3.5/21 draft once
+  implementation started — versions checked live rather than assumed)
+- Gradle multi-module build: `ingest-core` (library, the three bounded
+  contexts + SPIs), `ingest-providers-default` (library, the OSS-contributed
+  parsers), `app` (the only module with the Spring Boot plugin — depends on
+  both, produces the bootable jar)
+- Postgres 18 (metadata/state)
 - rclone (Google Drive transfers)
 - Playwright (Gumroad checkout automation)
 - React frontend (overview UI)
-- Deployed via docker compose
+- Deployed via docker compose; CI builds and publishes a combined image to a
+  private registry (see Deployment topology and CI/CD)
 - 10TB HDD storage on the server — I/O-sensitive, not SSD
 
 ## Component overview

@@ -1,0 +1,20 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Env / secrets
+.env
+
+# OS
+.DS_Store

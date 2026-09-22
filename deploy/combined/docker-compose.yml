@@ -1,0 +1,45 @@
+# Deploys the combined image published by CI. Copy .env.example to .env and
+# adjust before running `docker compose up`. Requires
+# `docker login <REGISTRY_HOST>` first if the registry needs auth.
+#
+# No built-in auth or HTTPS - bind to 127.0.0.1 by default and put this
+# behind whatever network boundary you already trust (Tailscale/WireGuard,
+# a reverse proxy with its own auth, or plain LAN-only).
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: patreon_ingest
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d patreon_ingest"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ${REGISTRY_HOST}/patreon-ingest-bot:${IMAGE_TAG:-latest}
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/patreon_ingest
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
+      # Leaving these unset disables ImapMailboxAdapter (it's only active
+      # when patreon.imap.host is configured - see ImapMailboxAdapter).
+      PATREON_IMAP_HOST: ${IMAP_HOST:-}
+      PATREON_IMAP_PORT: ${IMAP_PORT:-993}
+      PATREON_IMAP_USERNAME: ${IMAP_USERNAME:-}
+      PATREON_IMAP_PASSWORD: ${IMAP_PASSWORD:-}
+      PATREON_IMAP_FOLDER: ${IMAP_FOLDER:-INBOX}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-8080}:8080"
+
+volumes:
+  db-data:
