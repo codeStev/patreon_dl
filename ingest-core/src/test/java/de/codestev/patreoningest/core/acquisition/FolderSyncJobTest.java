@@ -194,6 +194,55 @@ class FolderSyncJobTest {
         assertThat(downloadItemRepository.findBySourceId(source.getId())).hasSize(1);
     }
 
+    // Real observed data: a Nomnom link can point directly at one model's
+    // own folder (e.g. "Chibi He-Man") containing only organizational
+    // subfolders ("STL"/"Render Images"/"Presupport"), not separate models.
+    @Test
+    void aFolderContainingOnlyOrganizationalSubfoldersIsRegisteredAsOneModel() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/chibi-he-man");
+        fakeDriveFolderListing.willReturn("chibi-he-man", List.of(
+                new DriveEntry("stl-id", "STL", true),
+                new DriveEntry("renders-id", "Render Images", true),
+                new DriveEntry("presupport-id", "Presupport", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getRemoteFileId, DownloadItem::getRemoteIsDirectory)
+                .containsExactly(tuple("chibi-he-man", true));
+    }
+
+    @Test
+    void aFolderWithAMixOfOrganizationalAndRealModelNamesIsStillEnumerated() {
+        // Only ALL-organizational triggers the single-model treatment - a
+        // genuine multi-model folder's names won't coincidentally collide
+        // with the whole vocabulary, but a partial/ambiguous match should
+        // fail safe toward the existing per-entry behavior.
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/mixed");
+        fakeDriveFolderListing.willReturn("mixed", List.of(
+                new DriveEntry("stl-id", "STL", true),
+                new DriveEntry("model-id", "Cool Dragon", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getModelName)
+                .containsExactlyInAnyOrder("STL", "Cool Dragon");
+    }
+
+    @Test
+    void reSyncingASingleModelFolderDoesNotCreateADuplicateItem() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/chibi-he-man");
+        fakeDriveFolderListing.willReturn("chibi-he-man", List.of(
+                new DriveEntry("stl-id", "STL", true),
+                new DriveEntry("presupport-id", "Presupport", true)));
+
+        folderSyncJob.syncAll();
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId())).hasSize(1);
+    }
+
     @Test
     void oneBadSourceDoesNotStopTheRestOfTheSync() {
         DownloadSource malformed = claimedSource("https://drive.google.com/not-a-folder-url");
