@@ -91,11 +91,15 @@ class ExecuteDownloadUseCaseTest {
     }
 
     private DownloadItem pendingItem(String sourceUrl) {
+        return pendingItem(sourceUrl, "Test Model");
+    }
+
+    private DownloadItem pendingItem(String sourceUrl, String modelName) {
         DownloadSource source = new DownloadSource("bulkamancer", null, null,
                 SourceType.DRIVE, sourceUrl, ClaimType.NONE);
         source.markClaimed();
         downloadSourceRepository.save(source);
-        DownloadItem item = new DownloadItem(source, "Test Model", null);
+        DownloadItem item = new DownloadItem(source, modelName, null);
         return downloadItemRepository.save(item);
     }
 
@@ -174,6 +178,18 @@ class ExecuteDownloadUseCaseTest {
         assertThat(renamedRoot.getFileName().toString()).doesNotContain(" ");
         assertThat(Files.exists(renamedRoot.resolve("top_level.txt"))).isTrue();
         assertThat(Files.exists(renamedRoot.resolve("nested_folder/deep_file.txt"))).isTrue();
+    }
+
+    @Test
+    void aVariantSuffixedModelNameNestsUnderASharedBaseFolder() {
+        DownloadItem item = pendingItem("https://drive.example/folder/wolverine-no-supports",
+                "wolverine_no_supports");
+        fakeSourceDownloader.willSucceedWith(new DownloadResult("ignored", 1L));
+
+        executeDownloadUseCase.execute(item.getId());
+
+        assertThat(fakeSourceDownloader.lastTargetDir().toString())
+                .endsWith("bulkamancer/Wolverine/no_supports".replace('/', java.io.File.separatorChar));
     }
 
     @Test

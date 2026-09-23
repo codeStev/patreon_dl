@@ -81,8 +81,10 @@ public class ExecuteDownloadUseCase {
         AppSettings settings = appSettingsRepository.findById(1L).orElseThrow();
         DownloadRuntimeOptions options = new DownloadRuntimeOptions(
                 settings.getBandwidthLimitKbps(), settings.isIoNice());
-        Path targetDir = Path.of(properties.downloadRoot(),
-                item.getSource().getCreator(), FilesystemNames.sanitize(item.getModelName()));
+        Path targetDir = Path.of(properties.downloadRoot(), item.getSource().getCreator());
+        for (String segment : FilesystemNames.targetPathSegments(item.getModelName())) {
+            targetDir = targetDir.resolve(segment);
+        }
 
         try {
             DownloadResult result = downloader.get().fetch(item, targetDir, options);

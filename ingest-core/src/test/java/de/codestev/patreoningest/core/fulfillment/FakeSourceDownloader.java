@@ -20,6 +20,7 @@ class FakeSourceDownloader implements SourceDownloader {
     private volatile DownloadFailedException nextException;
     private volatile long delayMillis;
     private volatile boolean createSpacedFilesUnderTargetDir;
+    private volatile Path lastTargetDir;
     private final AtomicInteger callCount = new AtomicInteger();
 
     @Override
@@ -30,6 +31,7 @@ class FakeSourceDownloader implements SourceDownloader {
     @Override
     public DownloadResult fetch(DownloadItem item, Path targetDir, DownloadRuntimeOptions options) {
         callCount.incrementAndGet();
+        lastTargetDir = targetDir;
         if (delayMillis > 0) {
             try {
                 Thread.sleep(delayMillis);
@@ -83,6 +85,10 @@ class FakeSourceDownloader implements SourceDownloader {
         return callCount.get();
     }
 
+    Path lastTargetDir() {
+        return lastTargetDir;
+    }
+
     // The @TestConfiguration bean instance is shared across every test
     // method in a class (Spring caches the context) - reset in @AfterEach
     // wherever a test asserts on callCount().
@@ -92,5 +98,6 @@ class FakeSourceDownloader implements SourceDownloader {
         nextResult = null;
         nextException = null;
         createSpacedFilesUnderTargetDir = false;
+        lastTargetDir = null;
     }
 }

@@ -25,6 +25,46 @@ class FilesystemNamesTest {
     }
 
     @Test
+    void aPlainModelNameGetsASingleTargetPathSegment() {
+        assertThat(FilesystemNames.targetPathSegments("Wolverine")).containsExactly("Wolverine");
+    }
+
+    @Test
+    void variantSuffixedNamesNestUnderASharedBaseFolder() {
+        assertThat(FilesystemNames.targetPathSegments("wolverine_no_supports"))
+                .containsExactly("Wolverine", "no_supports");
+        assertThat(FilesystemNames.targetPathSegments("wolverine_pre_supported_lys"))
+                .containsExactly("Wolverine", "pre_supported_lys");
+        assertThat(FilesystemNames.targetPathSegments("wolverine_pre_supported_stl"))
+                .containsExactly("Wolverine", "pre_supported_stl");
+        assertThat(FilesystemNames.targetPathSegments("wolverine_uncut"))
+                .containsExactly("Wolverine", "uncut");
+    }
+
+    @Test
+    void theBareModelNameAndItsVariantsResolveToTheSameBaseSegment() {
+        String bareBase = FilesystemNames.targetPathSegments("Wolverine").get(0);
+        String variantBase = FilesystemNames.targetPathSegments("wolverine_no_supports").get(0);
+
+        assertThat(variantBase).isEqualTo(bareBase);
+    }
+
+    @Test
+    void aLongerSuffixIsNotMistakenForAShorterOverlappingOne() {
+        // "_pre_supported_stl" must not be matched as "_uncut" or partially
+        // consumed by a shorter suffix check running first.
+        assertThat(FilesystemNames.targetPathSegments("valerie_pre_supported_stl"))
+                .containsExactly("Valerie", "pre_supported_stl");
+    }
+
+    @Test
+    void aNameThatIsOnlyTheSuffixIsNotTreatedAsAVariant() {
+        // Guard against an empty base name (e.g. a hypothetical bare
+        // "_uncut" with nothing before it) - not a real variant of anything.
+        assertThat(FilesystemNames.targetPathSegments("_uncut")).containsExactly("_uncut");
+    }
+
+    @Test
     void recursiveRenameReplacesSpacesInTheRootAndEveryDescendant(@TempDir Path tempDir) throws IOException {
         Path root = tempDir.resolve("Cool Dragon");
         Path nestedDir = root.resolve("sub folder");
