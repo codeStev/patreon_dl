@@ -153,12 +153,11 @@ class FolderSyncJobTest {
     }
 
     @Test
-    void aNonFolderUrlIsFlaggedLinkDeadInsteadOfRetriedForever() {
-        // Real incident: a parser can legitimately produce a Drive
-        // single-file share link ("/file/d/<id>/view"), which this job
-        // can't sync (it only handles folders) - retrying that every 30
-        // minutes forever would just spam the same error indefinitely.
-        DownloadSource source = claimedSource("https://drive.google.com/file/d/some-file-id/view?usp=sharing");
+    void anUnrecognizedUrlIsFlaggedLinkDeadInsteadOfRetriedForever() {
+        // Deterministically unfixable by retrying, unlike a real
+        // rclone/network failure - retrying every 30 minutes forever would
+        // just spam the same error indefinitely.
+        DownloadSource source = claimedSource("https://drive.google.com/nonsense");
 
         folderSyncJob.syncAll();
 
@@ -168,6 +167,31 @@ class FolderSyncJobTest {
         // from the CLAIMED-and-not-linkDead candidate query entirely.
         folderSyncJob.syncAll();
         assertThat(downloadItemRepository.findBySourceId(source.getId())).isEmpty();
+    }
+
+    // Real incident: a parser can legitimately produce a Drive single-file
+    // share link ("/file/d/<id>/view") instead of a folder link - this is
+    // now a supported, distinct shape, not an error.
+    @Test
+    void aSingleFileShareUrlRegistersExactlyOneItem() {
+        DownloadSource source = claimedSource("https://drive.google.com/file/d/some-file-id/view?usp=sharing");
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadSourceRepository.findById(source.getId()).orElseThrow().isLinkDead()).isFalse();
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getRemoteFileId, DownloadItem::getRemoteIsDirectory)
+                .containsExactly(tuple("some-file-id", false));
+    }
+
+    @Test
+    void reSyncingASingleFileShareUrlDoesNotCreateADuplicateItem() {
+        DownloadSource source = claimedSource("https://drive.google.com/file/d/some-file-id/view?usp=sharing");
+
+        folderSyncJob.syncAll();
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId())).hasSize(1);
     }
 
     @Test

@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -41,9 +42,7 @@ public class RcloneDriveDownloadAdapter implements SourceDownloader {
 
     @Override
     public DownloadResult fetch(DownloadItem item, Path targetDir, DownloadRuntimeOptions options) {
-        String folderId = item.getRemoteFileId() != null
-                ? item.getRemoteFileId()
-                : GoogleDriveUrls.extractFolderId(item.getSource().getSourceUrl());
+        DriveReference reference = resolveReference(item);
 
         try {
             Files.createDirectories(targetDir);
@@ -56,7 +55,9 @@ public class RcloneDriveDownloadAdapter implements SourceDownloader {
                     "Could not create target directory " + targetDir + ": " + e.getMessage(), false, e);
         }
 
-        List<String> command = buildCommand(folderId, targetDir, options);
+        List<String> command = reference.isDirectory()
+                ? buildFolderCopyCommand(reference.id(), targetDir, options)
+                : buildFileCopyCommand(reference.id(), targetDir, options);
         log.info("Fetching item {} via rclone: {}", item.getId(), command);
 
         RcloneProcess.Result result = runRclone(item, command);
@@ -64,14 +65,41 @@ public class RcloneDriveDownloadAdapter implements SourceDownloader {
         if (result.exitCode() != 0) {
             boolean permanent = PERMANENT_EXIT_CODES.contains(result.exitCode());
             throw new DownloadFailedException(
-                    "rclone copy failed (exit " + result.exitCode() + "): " + result.stderr().trim(),
+                    "rclone fetch failed (exit " + result.exitCode() + "): " + result.stderr().trim(),
                     permanent);
         }
 
         return new DownloadResult(targetDir.toString(), directorySize(targetDir));
     }
 
-    private List<String> buildCommand(String folderId, Path targetDir, DownloadRuntimeOptions options) {
+    // remoteFileId set (FolderSyncJob-created item): remoteIsDirectory tells
+    // us which; null there only for items created before that column
+    // existed, all of which were folders, so default true for backward
+    // compatibility. remoteFileId null (a directly-named registration, e.g.
+    // Bulkamancer/Wicked): derive the shape from the source URL itself.
+    DriveReference resolveReference(DownloadItem item) {
+        if (item.getRemoteFileId() != null) {
+            boolean isDirectory = !Boolean.FALSE.equals(item.getRemoteIsDirectory());
+            return new DriveReference(item.getRemoteFileId(), isDirectory);
+        }
+
+        String sourceUrl = item.getSource().getSourceUrl();
+        Optional<String> folderId = GoogleDriveUrls.tryExtractFolderId(sourceUrl);
+        if (folderId.isPresent()) {
+            return new DriveReference(folderId.get(), true);
+        }
+        Optional<String> fileId = GoogleDriveUrls.tryExtractFileId(sourceUrl);
+        if (fileId.isPresent()) {
+            return new DriveReference(fileId.get(), false);
+        }
+        // Not a recognizable Drive URL at all - retrying won't change that.
+        throw new DownloadFailedException("Not a recognizable Google Drive URL: " + sourceUrl, true);
+    }
+
+    record DriveReference(String id, boolean isDirectory) {
+    }
+
+    private List<String> buildFolderCopyCommand(String folderId, Path targetDir, DownloadRuntimeOptions options) {
         List<String> command = new ArrayList<>();
         if (options.ioNice()) {
             command.add("ionice");
@@ -94,6 +122,30 @@ public class RcloneDriveDownloadAdapter implements SourceDownloader {
         }
         command.add(properties.remoteName() + ":");
         command.add(targetDir.toString());
+        return command;
+    }
+
+    // "rclone backend copyid <remote>: <fileID> <path>" - a Drive-backend
+    // command, not a top-level rclone command (verified against the
+    // installed 1.75.1 binary's own --help output, not assumed). A
+    // trailing "/" on the destination tells it to use the file's own real
+    // name rather than requiring us to already know it.
+    private List<String> buildFileCopyCommand(String fileId, Path targetDir, DownloadRuntimeOptions options) {
+        List<String> command = new ArrayList<>();
+        if (options.ioNice()) {
+            command.add("ionice");
+            command.add("-c3");
+        }
+        command.add(properties.binaryPath());
+        command.add("--config=" + properties.configPath());
+        if (options.bandwidthLimitKbps() != null) {
+            command.add("--bwlimit=" + options.bandwidthLimitKbps() + "k");
+        }
+        command.add("backend");
+        command.add("copyid");
+        command.add(properties.remoteName() + ":");
+        command.add(fileId);
+        command.add(targetDir.toString() + "/");
         return command;
     }
 

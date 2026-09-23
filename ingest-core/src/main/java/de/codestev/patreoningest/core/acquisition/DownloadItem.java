@@ -57,14 +57,29 @@ public class DownloadItem {
     @Column(name = "next_attempt_at")
     private LocalDateTime nextAttemptAt;
 
+    // Only meaningful when remoteFileId is set (FolderSyncJob-created items) -
+    // determines whether RcloneDriveDownloadAdapter treats remoteFileId as a
+    // folder or a single file. Null for directly-named registrations
+    // (Bulkamancer/Wicked), which derive this from the source URL shape
+    // instead, and for items created before this column existed (all
+    // folders at the time - treated as "directory" by default for
+    // backward compatibility).
+    @Column(name = "remote_is_directory")
+    private Boolean remoteIsDirectory;
+
     protected DownloadItem() {
         // JPA
     }
 
     public DownloadItem(DownloadSource source, String modelName, String remoteFileId) {
+        this(source, modelName, remoteFileId, null);
+    }
+
+    public DownloadItem(DownloadSource source, String modelName, String remoteFileId, Boolean remoteIsDirectory) {
         this.source = source;
         this.modelName = modelName;
         this.remoteFileId = remoteFileId;
+        this.remoteIsDirectory = remoteIsDirectory;
         this.status = ItemStatus.PENDING;
         this.retryCount = 0;
         this.discoveredAt = LocalDateTime.now();
@@ -149,5 +164,9 @@ public class DownloadItem {
 
     public LocalDateTime getNextAttemptAt() {
         return nextAttemptAt;
+    }
+
+    public Boolean getRemoteIsDirectory() {
+        return remoteIsDirectory;
     }
 }
