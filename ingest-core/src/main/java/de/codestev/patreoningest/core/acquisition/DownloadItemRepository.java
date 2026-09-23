@@ -15,6 +15,13 @@ public interface DownloadItemRepository extends JpaRepository<DownloadItem, UUID
 
     Optional<DownloadItem> findBySourceIdAndRemoteFileId(UUID sourceId, String remoteFileId);
 
+    // A null remoteFileId marks a directly-named registration (Bulkamancer
+    // standalone DMs, Wicked per-model Gumroad lines) - a clean 1:1
+    // model<->link mapping the parser already fully represents, with
+    // nothing to diff (see the design doc's "Handling folders that fill in
+    // over time"). FolderSyncJob uses this to skip such sources entirely.
+    boolean existsBySourceIdAndRemoteFileIdIsNull(UUID sourceId);
+
     // Candidate set for the queue tick: claimable, not waiting on a backoff
     // window, parent source still alive. The EAGER-vs-MANUAL provider policy
     // filter is applied afterwards in Java (see RunDownloadQueueTickUseCase) -

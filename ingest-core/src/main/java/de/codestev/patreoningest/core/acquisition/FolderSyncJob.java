@@ -64,6 +64,21 @@ public class FolderSyncJob {
     }
 
     private void syncOne(DownloadSource source) {
+        // A directly-named item (null remoteFileId) means the parser
+        // already fully represents this source as a clean 1:1
+        // model<->link mapping (Bulkamancer standalone DMs, Wicked
+        // per-model Gumroad lines) - per the design doc, "there's nothing
+        // to diff" here. Real incident this fixes: a Bulkamancer standalone
+        // link's folder also contains variant subfolders (e.g.
+        // "wolverine_no_supports", "wolverine_uncut") alongside a Readme -
+        // without this check, every one of those got enumerated as its own
+        // spurious top-level "model" even though the named item already
+        // downloads the whole folder (recursively, variants included) as
+        // one unit.
+        if (downloadItemRepository.existsBySourceIdAndRemoteFileIdIsNull(source.getId())) {
+            return;
+        }
+
         Optional<String> folderId = GoogleDriveUrls.tryExtractFolderId(source.getSourceUrl());
         if (folderId.isPresent()) {
             syncFolder(source, folderId.get());
@@ -129,7 +144,7 @@ public class FolderSyncJob {
     private void syncWholeFolderAsOneModel(DownloadSource source, String folderId, int entryCount) {
         boolean isNew = downloadItemRepository.findBySourceIdAndRemoteFileId(source.getId(), folderId).isEmpty();
         if (isNew) {
-            downloadItemRepository.save(new DownloadItem(source, fallbackModelLabel(source), folderId, true));
+            downloadItemRepository.save(new DownloadItem(source, fallbackModelLabel(source, folderId), folderId, true));
             log.info("Source {} looks like a single model's own folder ({} organizational subfolder(s)) - "
                     + "registering as one item instead of enumerating", source.getId(), entryCount);
         }
@@ -144,26 +159,40 @@ public class FolderSyncJob {
     private void syncSingleFile(DownloadSource source, String fileId) {
         boolean isNew = downloadItemRepository.findBySourceIdAndRemoteFileId(source.getId(), fileId).isEmpty();
         if (isNew) {
-            downloadItemRepository.save(new DownloadItem(source, fallbackModelLabel(source), fileId, false));
+            downloadItemRepository.save(new DownloadItem(source, fallbackModelLabel(source, fileId), fileId, false));
             log.info("Synced single-file source {} - registered", source.getId());
         }
         source.markSynced(isNew);
         downloadSourceRepository.save(source);
     }
 
-    // We don't know the folder/file's real name without an extra Drive API
-    // call at sync time - the actual downloaded content on disk will still
-    // be organized correctly (rclone resolves real names for a folder copy;
-    // a single-file copy uses the file's own real name); this is only the
-    // label shown in the admin UI until then.
-    private static String fallbackModelLabel(DownloadSource source) {
+    // Getting the folder/file's real Drive-side name here isn't possible
+    // with the rclone commands this app already shells out to: `lsjson
+    // --stat` on a path rooted at this exact ID returns a synthetic empty
+    // name for the root itself (confirmed by reading rclone's own
+    // operations/lsjson.go source, not assumed), and the Drive API's
+    // search query language (used by `rclone backend query`) doesn't
+    // support filtering by "id" at all (confirmed against Google's own
+    // query-terms reference) - only a raw files.get(id) call would work,
+    // which needs its own Drive API HTTP client, not just shelling out to
+    // rclone. So the label here is honestly generic, not the real
+    // "Chibi He-Man"-style title - but qualified with a short ID suffix
+    // so two different single-model folders/files NEVER collide into the
+    // same download directory, which the merging bug this replaces would
+    // have caused. The actual downloaded content on disk is still
+    // organized correctly either way (rclone resolves real names for a
+    // folder copy's contents; a single-file copy uses the file's own real
+    // name) - only this admin-UI label and its top-level folder name are
+    // generic.
+    private static String fallbackModelLabel(DownloadSource source, String driveId) {
+        String suffix = " (" + driveId.substring(0, Math.min(8, driveId.length())) + ")";
         if (source.getMonthLabel() != null) {
-            return source.getMonthLabel();
+            return source.getMonthLabel() + suffix;
         }
         if (source.getCategory() != null) {
-            return source.getCategory();
+            return source.getCategory() + suffix;
         }
-        return "Shared folder";
+        return "Shared folder" + suffix;
     }
 
     private static String stripExtension(String fileName) {

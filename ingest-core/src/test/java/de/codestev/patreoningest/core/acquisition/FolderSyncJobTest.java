@@ -243,6 +243,49 @@ class FolderSyncJobTest {
         assertThat(downloadItemRepository.findBySourceId(source.getId())).hasSize(1);
     }
 
+    // Real incident: a Bulkamancer standalone-DM link ("Wolverine: <folder-url>")
+    // is registered by BulkamancerParser as one directly-named item covering
+    // the WHOLE folder (a clean 1:1 mapping, downloaded recursively as one
+    // unit). That folder's own contents can still include variant
+    // subfolders ("wolverine_no_supports", "wolverine_uncut") and a Readme
+    // alongside them - before this fix, FolderSyncJob independently listed
+    // that same folder and, since not every entry matched the
+    // organizational vocabulary, enumerated each one as its own spurious
+    // top-level "model" duplicate of content the named item already covers.
+    @Test
+    void aSourceWithAnExistingDirectlyNamedItemIsNeverEnumerated() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/wolverine-folder");
+        downloadItemRepository.save(new DownloadItem(source, "Wolverine", null));
+        fakeDriveFolderListing.willReturn("wolverine-folder", List.of(
+                new DriveEntry("readme-id", "Readme", false),
+                new DriveEntry("no-supports-id", "wolverine_no_supports", true),
+                new DriveEntry("uncut-id", "wolverine_uncut", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getModelName)
+                .containsExactly("Wolverine");
+    }
+
+    // Verifies the actual danger the fallback-naming fix addresses: two
+    // different single-model folders (both generic, no month/category to
+    // fall back to) must never resolve to the identical label, or their
+    // downloads would land in the same directory and merge together.
+    @Test
+    void twoDifferentFallbackLabeledFoldersDoNotCollide() {
+        DownloadSource chibiHeMan = claimedSource("https://drive.google.com/drive/folders/chibi-he-man-id");
+        fakeDriveFolderListing.willReturn("chibi-he-man-id", List.of(new DriveEntry("s", "STL", true)));
+        DownloadSource skeletor = claimedSource("https://drive.google.com/drive/folders/skeletor-id");
+        fakeDriveFolderListing.willReturn("skeletor-id", List.of(new DriveEntry("s", "STL", true)));
+
+        folderSyncJob.syncAll();
+
+        String chibiLabel = downloadItemRepository.findBySourceId(chibiHeMan.getId()).get(0).getModelName();
+        String skeletorLabel = downloadItemRepository.findBySourceId(skeletor.getId()).get(0).getModelName();
+        assertThat(chibiLabel).isNotEqualTo(skeletorLabel);
+    }
+
     @Test
     void oneBadSourceDoesNotStopTheRestOfTheSync() {
         DownloadSource malformed = claimedSource("https://drive.google.com/not-a-folder-url");
