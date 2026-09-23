@@ -192,6 +192,20 @@ catch a link dying silently with no download attempt in flight). See the
 design doc's "Open / unresolved" section for what's genuinely undecided
 versus just not-yet-implemented.
 
+Known gaps found against real production data, not yet addressed:
+- **Single-file Google Drive shares** (`.../file/d/<id>/view`, as opposed to
+  a folder link) aren't downloadable at all — `FolderSyncJob` flags them
+  `link_dead` on sight so they don't get retried forever, but nothing
+  actually fetches a lone shared file. Unclear yet whether this is a
+  recurring real content shape or a one-off.
+- **No way to un-flag a `link_dead` source** from the UI or API once set —
+  recovering one flagged in error (e.g. the case above) needs a direct DB
+  edit. Not urgent while it's rare.
+- **No admin UI for `processed_email` parse failures/mismatches** — the
+  data (parse status, error message per email) is tracked, but nothing
+  surfaces "which emails failed to parse or matched no parser" visually
+  yet; check the table directly if a model seems to be missing.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE). Contributions welcome; the parser extension

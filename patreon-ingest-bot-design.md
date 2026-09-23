@@ -704,10 +704,27 @@ touch core code. Two things formalize that:
 - Exact Gumroad checkout DOM selectors for the discount-wait step need to be
   captured from a real checkout session before `GumroadClaimAdapter` can be built
   reliably.
-- Whether Google Drive access for a revoked folder can ever be restored, or is
-  permanent — determines whether retry-with-backoff on a dead link is worth
-  building.
+- **Single-file Google Drive shares aren't supported.** Real production data
+  surfaced a `https://drive.google.com/file/d/<id>/view` link — a genuine,
+  well-formed Drive link shape, just not a folder. `FolderSyncJob` only
+  understands `/folders/<id>` and now flags anything else `link_dead`
+  immediately (see "Failure handling" — deliberately, so it doesn't retry a
+  deterministically-unfixable URL every 30 minutes forever), but no
+  `SourceDownloader` exists for a single-file share either way. Unclear yet
+  whether this recurs for real creator content (some creators may
+  legitimately share one file instead of a folder) or was one instance of
+  malformed input — worth revisiting once more real data is seen.
+- **No way to un-flag `link_dead` once set**, from the UI, the API, or any
+  use case — recovering a source that was flagged in error (e.g. the
+  single-file-share case above, not a genuinely revoked folder) currently
+  requires a direct database edit. Settled as *not urgent* for now since
+  it's rare, but a real gap if `link_dead` false-positives turn out to be
+  more common than expected.
 
 Settled during this architecture pass: network exposure (Tailscale-only, no
 app-level auth for v1) and secrets handling (`.env` + docker compose) — see
-Deployment topology.
+Deployment topology. Also settled during the Fulfillment build: Google
+Drive access for a revoked/dead folder is treated as permanent, no
+retry-with-backoff — `link_dead` sources are excluded from both the
+download queue and `FolderSyncJob` outright rather than periodically
+re-checked (that re-check is `LinkHealthCheckJob`, still unbuilt).
