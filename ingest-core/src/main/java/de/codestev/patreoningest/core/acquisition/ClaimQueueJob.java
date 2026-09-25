@@ -6,8 +6,12 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 // Drives port-backed claims (e.g. Gumroad checkout) in the background, one
 // source at a time - both because a claim is slow (a real browser) and to
@@ -25,6 +29,9 @@ public class ClaimQueueJob {
     private final List<ClaimPort> claimPorts;
     private final DownloadSourceRepository downloadSourceRepository;
     private final ProviderSettingsRepository providerSettingsRepository;
+    // The set of active ports is fixed for the life of the process, so a
+    // missing adapter is warned about once per source type, not every run.
+    private final Set<SourceType> warnedMissingAdapter = EnumSet.noneOf(SourceType.class);
 
     public ClaimQueueJob(List<ClaimPort> claimPorts, DownloadSourceRepository downloadSourceRepository,
                          ProviderSettingsRepository providerSettingsRepository) {
@@ -35,6 +42,7 @@ public class ClaimQueueJob {
 
     public void runDue() {
         List<DownloadSource> due = downloadSourceRepository.findClaimsDue(LocalDateTime.now());
+        Map<SourceType, Integer> skippedWithoutAdapter = new EnumMap<>(SourceType.class);
         for (DownloadSource source : due) {
             if (claimPolicyOf(source.getCreator()) == ClaimPolicy.MANUAL) {
                 source.markNeedsManualClaim("Auto-redeem is off for " + source.getCreator() + " - claim it by hand");
@@ -47,10 +55,22 @@ public class ClaimQueueJob {
             if (port.isEmpty()) {
                 // Adapter not available (e.g. not configured) - leave the
                 // source DISCOVERED, untouched, until one is.
+                skippedWithoutAdapter.merge(source.getSourceType(), 1, Integer::sum);
                 continue;
             }
             claimOne(source, port.get());
         }
+        warnAboutMissingAdapters(skippedWithoutAdapter);
+    }
+
+    private void warnAboutMissingAdapters(Map<SourceType, Integer> skipped) {
+        skipped.forEach((type, count) -> {
+            if (warnedMissingAdapter.add(type)) {
+                log.warn("No claim adapter is active for {} - {} due claim(s) stay DISCOVERED until one is "
+                        + "configured (for GUMROAD: set patreon.acquisition.gumroad.email / GUMROAD_EMAIL)",
+                        type, count);
+            }
+        });
     }
 
     private ClaimPolicy claimPolicyOf(String providerId) {
