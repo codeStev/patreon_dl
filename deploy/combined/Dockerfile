@@ -61,6 +61,18 @@ COPY --from=backend-build /app/app/build/libs/*.jar app.jar
 # RcloneDriveDownloadAdapter/RcloneDriveFolderListingAdapter, not run as a
 # service.
 COPY --from=rclone-fetch /usr/local/bin/rclone /usr/local/bin/rclone
+# Headless Chromium for GumroadClaimAdapter, installed at build time (as
+# root, with its system libraries) by the Playwright CLI bundled in the app
+# jar itself - so the browser always matches the Playwright version the app
+# was built with. Runtime downloads are then disabled; the non-root user
+# couldn't write there anyway. Trade-off: this layer rebuilds whenever
+# app.jar changes.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN java -cp app.jar -Dloader.main=com.microsoft.playwright.CLI \
+        org.springframework.boot.loader.launch.PropertiesLauncher \
+        install --with-deps --only-shell chromium \
+    && rm -rf /var/lib/apt/lists/*
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 USER spring
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

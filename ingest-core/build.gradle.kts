@@ -32,6 +32,11 @@ dependencies {
     // it directly, not just transitively.
     implementation("tools.jackson.core:jackson-databind")
 
+    // GumroadClaimAdapter drives a real (headless) Chromium through
+    // Gumroad's multi-step checkout. The browser itself is installed into
+    // the runtime image by the Dockerfile, not downloaded at runtime.
+    implementation("com.microsoft.playwright:playwright:1.63.0")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

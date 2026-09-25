@@ -310,17 +310,58 @@ register the bean, done.
 ```java
 public interface ClaimPort {
     SourceType supports(); // GUMROAD — DRIVE/MMF have no ClaimPort at all
-    void claim(DownloadSource source);
+    ClaimOutcome claim(DownloadSource source);
+    // Claimed(receiptUrl) | AlreadyOwned | NeedsManual(reason) | RetryLater(reason)
 }
 ```
 
 - **GumroadClaimAdapter**: Playwright-driven headless browser. Gumroad
-  checkout is multi-step and can't be done with a plain HTTP call:
-  1. Click "I want this!"
-  2. Wait for the discount to apply in the cart (fixed sleeps are flaky — wait
-     on the price/discount DOM element changing, not a timeout)
-  3. Fill in email
-  4. Complete checkout
+  checkout is multi-step and can't be done with a plain HTTP call. Flow and
+  selectors captured from a real Wicked redemption (2026-09-25). Every class
+  on these pages is a Tailwind utility, so match on role/label/text/itemprop,
+  never on CSS classes:
+  1. Open the product URL. The offer code is its last path segment
+     (`/l/SteveAustinS/3weab9n`). **Pre-check before any click:**
+     `[itemprop=price]` must have `content="0"` and the `[role=status]` box
+     must say "100% off". Otherwise the code has expired, so abort without
+     checkout. (Don't use `meta[product:price:amount]`; that's the
+     undiscounted list price.)
+  2. Click `getByRole('link', {name: 'I want this!'}).first()`. It's an
+     `<a>` and appears twice. This redirects to `gumroad.com/checkout`.
+  3. Wait for the discount to apply. It lands a moment *after* the checkout
+     page loads, so use an auto-retrying assertion (~15s) on the value next to
+     the `h4` "Total" becoming `US$0`, never a fixed sleep. Timeout =
+     retryable failure, source stays DISCOVERED.
+  4. Only after that, run the guards: exactly one cart line item (one
+     "Remove" button; the cart persists across visits, so stale items would be
+     checked out too), and the submit button reads **"Get"** (free
+     checkout). Anything else aborts.
+  5. Fill `getByLabel('Email address')` (its id is React-generated and
+     unstable) and click `getByRole('button', {name: 'Get', exact: true})`.
+  6. Success = redirect to `gumroad.com/d/<32-hex-id>` (the purchase's
+     content page; the H1 is the product name). There's no toast, so the URL is
+     the signal. Store that URL as the claim receipt.
+  7. **Already owned** (e.g. the operator redeemed it by hand first, or a
+     rescan after a reset re-discovers an old link): nothing on the product
+     or checkout page hints at it, since the checkout is anonymous and only
+     knows the email once it's submitted. After "Get", Gumroad opens a
+     `role=dialog` titled **"You already own this"** ("You already paid for
+     … Do you want to buy it again?") with **Cancel** / **Buy again**. The
+     adapter reports `AlreadyOwned` and never clicks "Buy again". The source
+     becomes CLAIMED with no receipt and the note "Already owned - claimed
+     outside the app".
+
+  Checkout is protected by **reCAPTCHA Enterprise** (score-based). The
+  challenge `bframe` iframe sits in the DOM before any challenge — sometimes
+  parked off-screen, sometimes laid out across the top of the viewport with
+  `visibility: hidden` (seen after "Get" in a real checkout). So "a
+  challenge is showing" means Playwright `isVisible()` *and* an on-screen box,
+  never presence or position alone. A real logged-in Chrome
+  passed with no challenge; a headless container may not. If the challenge
+  frame becomes visible after "Get", the adapter does **not** try to solve
+  or evade it. It marks the source as needing manual action and the admin UI
+  shows the link for the operator to click in their own browser. Low stakes:
+  Wicked's files come from the Drive term folder either way.
   This only claims the model in the Gumroad library — it does not download
   files. (This is the corrected home for what an earlier draft called
   `GumroadRedeemer` and registered as a downloader — it never downloaded
@@ -361,6 +402,7 @@ concerns with different urgency profiles:
 
 ```
 download_source.claim_status:              DISCOVERED → CLAIMED
+                                           DISCOVERED → NEEDS_MANUAL → CLAIMED (operator)
 download_item.status (per file, post-claim):          PENDING → DOWNLOADED / FAILED
 ```
 
@@ -368,9 +410,20 @@ download_item.status (per file, post-claim):          PENDING → DOWNLOADED / F
   (`download_source.claim_status`).
 - **CLAIMED**: ownership secured for the whole source. For Drive/MMF this is
   implicit — no `ClaimPort` is registered for those source types (see
-  Extension points). For Gumroad, this means `GumroadClaimAdapter` has run
-  via `ClaimSourceUseCase` — cheap, no storage cost, and should run eagerly
-  since Gumroad discount codes can also expire.
+  Extension points), so `ClaimSourceUseCase` claims them inline at
+  registration. Port-backed claims (Gumroad) never run inline with mailbox
+  polling — they're slow (a real browser) and must not be able to break a
+  poll. `ClaimQueueJob` drives them in the background instead (every 10
+  minutes, one source at a time, eagerly since Gumroad discount codes can
+  expire). A successful Gumroad claim stores its `/d/<id>` purchase page as
+  `claim_receipt_url`; an `AlreadyOwned` outcome is also CLAIMED, with no
+  receipt and a `claim_note` saying it was claimed outside the app.
+- **NEEDS_MANUAL**: the port couldn't finish on its own — a bot-check
+  challenge, an expired coupon, a checkout guard tripping, or a
+  `RetryLater` outcome repeating 5 times (exponential backoff from 30
+  minutes). The reason is kept in `claim_note`; the admin UI lists these under
+  "Needs your action" with the link, and the operator's "I claimed it"
+  confirmation moves them to CLAIMED.
 - **PENDING → DOWNLOADED / FAILED**: file-level, on `download_item`, only
   once the parent source is CLAIMED. Bytes actually on disk, or a recorded
   failure with `last_error`.
@@ -629,9 +682,10 @@ shouldn't encode that as a requirement.
   network's assumptions. *This* deployment's choice is Tailscale-only, no
   app-level login — reconsider if ever shared outside a single trust group.
 - **Containers**: `app` (Spring Boot, serves the built React static assets
-  from the same JAR — one container, one port; Playwright Java manages its own
-  bundled Chromium in-process, so no separate browser sidecar is needed at
-  single-user scale) and `postgres`. `rclone` isn't its own service — it's a
+  from the same JAR — one container, one port; headless Chromium is installed
+  into the image at build time by the Playwright CLI bundled in that same JAR,
+  so no separate browser sidecar is needed at single-user scale) and
+  `postgres`. `rclone` isn't its own service — it's a
   CLI binary in the app image, shelled out to per transfer.
 - **Volumes**:
   - `pg-data` — named volume, Postgres state.
@@ -641,16 +695,15 @@ shouldn't encode that as a requirement.
     for whichever Google account the operator configures (the account the
     Drive links were shared to). Treat this file itself as a secret
     (host-side `chmod 600`, never baked into the image, never committed).
-  - `playwright-state` — named volume persisting Gumroad's login session
-    (storage state / cookies) across container restarts, so redemption doesn't
-    need an interactive login every run.
+  - No browser-state volume: the real checkout capture showed a free
+    Gumroad checkout needs no login, just an email address
+    (`GUMROAD_EMAIL`) — the product lands in that account's library. Each
+    claim runs in a fresh browser context, so nothing persists between
+    attempts (which also guarantees an empty cart).
 - **Secrets**: `.env` + docker compose `env_file:` — IMAP host/user/password,
-  DB credentials, Gumroad login. A `.env.example` with placeholder values
-  ships in the repo; `.env` itself is gitignored, never committed. If the
-  Gumroad session in `playwright-state` ever expires, `GumroadClaimAdapter`
-  should fail loudly (`FAILED` + `last_error`) rather than attempt a fresh
-  unattended login — 2FA would break that anyway, and a stale password
-  shouldn't be the thing quietly retried in a loop.
+  DB credentials. A `.env.example` with placeholder values ships in the repo;
+  `.env` itself is gitignored, never committed. No Gumroad password is
+  stored or ever typed in by the app.
 
 ## Observability
 
@@ -701,9 +754,6 @@ touch core code. Two things formalize that:
 
 - MyMiniFactory retrieval mechanism (Bulkamancer's recap library) not yet
   designed — likely needs its own auth flow investigation.
-- Exact Gumroad checkout DOM selectors for the discount-wait step need to be
-  captured from a real checkout session before `GumroadClaimAdapter` can be built
-  reliably.
 - **Single-file Google Drive shares aren't supported.** Real production data
   surfaced a `https://drive.google.com/file/d/<id>/view` link — a genuine,
   well-formed Drive link shape, just not a folder. `FolderSyncJob` only

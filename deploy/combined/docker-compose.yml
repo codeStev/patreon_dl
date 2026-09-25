@@ -43,6 +43,10 @@ services:
       # you're ready to download anything; nothing else in the app depends
       # on it.
       PATREON_FULFILLMENT_RCLONE_REMOTE_NAME: ${RCLONE_REMOTE_NAME:-gdrive}
+      # Email that free Gumroad checkouts (Wicked) are placed under - the
+      # claimed products land in that Gumroad account's library. Leaving it
+      # unset disables automatic Gumroad claiming.
+      PATREON_ACQUISITION_GUMROAD_EMAIL: ${GUMROAD_EMAIL:-}
     depends_on:
       db:
         condition: service_healthy

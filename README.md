@@ -204,8 +204,15 @@ retry/backoff, the `rclone`-backed Drive downloader, manual "download now"
 trigger), and an Admin API + React UI covering settings for both polling and
 the download queue plus a live overview of every discovered source and item.
 
-Not yet built: Gumroad's real claim flow (`GumroadClaimAdapter` — Wicked
-sources stay `DISCOVERED` until this exists), `MmfDownloadAdapter` (MMF
+Gumroad claiming (Wicked's 100%-off links) runs in the background once
+`GUMROAD_EMAIL` is set: `GumroadClaimAdapter` drives the free checkout in
+headless Chromium and refuses to submit unless the page proves it's free.
+If Gumroad shows a reCAPTCHA challenge, the coupon has expired, or retries
+run out, the source moves to `NEEDS_MANUAL` and appears under "Needs your
+action" in the overview — claim it in your own browser, then click "I
+claimed it". The app never tries to solve or get around a challenge.
+
+Not yet built: `MmfDownloadAdapter` (MMF
 stays manual-retrieval), and `LinkHealthCheckJob` (the periodic re-check of
 already-quiet sources — a hard failure during an active download attempt
 already flags a source `link_dead` immediately; this job would additionally
