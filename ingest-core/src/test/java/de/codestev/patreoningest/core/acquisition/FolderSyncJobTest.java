@@ -297,4 +297,105 @@ class FolderSyncJobTest {
         assertThat(downloadItemRepository.findBySourceId(good.getId())).hasSize(1);
         assertThat(downloadItemRepository.findBySourceId(malformed.getId())).isEmpty();
     }
+
+    private DownloadSource claimedCollectionsSource(String folderId) {
+        DownloadSource source = new DownloadSource("my-archive", null, null, SourceType.DRIVE,
+                "https://drive.google.com/drive/folders/" + folderId, ClaimType.NONE, FolderLayout.COLLECTIONS);
+        source.markClaimed();
+        return downloadSourceRepository.save(source);
+    }
+
+    private static NestedDriveEntry top(String id, String name, boolean isDirectory) {
+        return new NestedDriveEntry(null, new DriveEntry(id, name, isDirectory));
+    }
+
+    private static NestedDriveEntry child(String parent, String id, String name, boolean isDirectory) {
+        return new NestedDriveEntry(parent, new DriveEntry(id, name, isDirectory));
+    }
+
+    @Test
+    void eachCollectionInACreatorFolderBecomesOneGroupedItem() {
+        DownloadSource source = claimedCollectionsSource("rolling-1");
+        fakeDriveFolderListing.willReturnTwoLevels("rolling-1", List.of(
+                top("titan", "Titan Forge", true),
+                child("Titan Forge", "titan-jan", "2025-01 Release", true),
+                child("Titan Forge", "titan-feb", "2025-02 Release", true),
+                top("loot", "Loot Studios", true),
+                child("Loot Studios", "loot-bonus", "Bonus Pack.zip", false)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getGroupName, DownloadItem::getModelName,
+                        DownloadItem::getRemoteFileId, DownloadItem::getRemoteIsDirectory)
+                .containsExactlyInAnyOrder(
+                        tuple("Titan Forge", "2025-01 Release", "titan-jan", true),
+                        tuple("Titan Forge", "2025-02 Release", "titan-feb", true),
+                        tuple("Loot Studios", "Bonus Pack", "loot-bonus", false));
+    }
+
+    @Test
+    void aNewCollectionOnALaterSyncIsRegisteredWithoutDuplicatingTheOthers() {
+        DownloadSource source = claimedCollectionsSource("rolling-2");
+        fakeDriveFolderListing.willReturnTwoLevels("rolling-2", List.of(
+                top("titan", "Titan Forge", true),
+                child("Titan Forge", "titan-jan", "2025-01 Release", true)));
+        folderSyncJob.syncAll();
+        folderSyncJob.syncAll();
+        assertThat(downloadSourceRepository.findById(source.getId()).orElseThrow().getQuietSince()).isNotNull();
+
+        fakeDriveFolderListing.willReturnTwoLevels("rolling-2", List.of(
+                top("titan", "Titan Forge", true),
+                child("Titan Forge", "titan-jan", "2025-01 Release", true),
+                child("Titan Forge", "titan-feb", "2025-02 Release", true)));
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getRemoteFileId)
+                .containsExactlyInAnyOrder("titan-jan", "titan-feb");
+        assertThat(downloadSourceRepository.findById(source.getId()).orElseThrow().getQuietSince()).isNull();
+    }
+
+    @Test
+    void aTopLevelFolderThatIsOneModelsOwnFolderBecomesOneUngroupedItem() {
+        DownloadSource source = claimedCollectionsSource("rolling-3");
+        fakeDriveFolderListing.willReturnTwoLevels("rolling-3", List.of(
+                top("dragon", "Big Dragon", true),
+                child("Big Dragon", "dragon-stl", "STL", true),
+                child("Big Dragon", "dragon-pre", "Presupported", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getGroupName, DownloadItem::getModelName, DownloadItem::getRemoteFileId)
+                .containsExactly(tuple(null, "Big Dragon", "dragon"));
+    }
+
+    @Test
+    void aTopLevelFileBecomesOneUngroupedItemAndAnEmptyFolderNothingYet() {
+        DownloadSource source = claimedCollectionsSource("rolling-4");
+        fakeDriveFolderListing.willReturnTwoLevels("rolling-4", List.of(
+                top("readme", "Read me first.pdf", false),
+                top("empty", "Coming Soon", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getGroupName, DownloadItem::getModelName, DownloadItem::getRemoteIsDirectory)
+                .containsExactly(tuple(null, "Read me first", false));
+    }
+
+    @Test
+    void aModelsSourceNeverUsesTheTwoLevelListing() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/flat-1");
+        fakeDriveFolderListing.willReturn("flat-1", List.of(new DriveEntry("model-a", "Model A", true)));
+        fakeDriveFolderListing.willReturnTwoLevels("flat-1", List.of(
+                child("Model A", "part", "Part", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getGroupName, DownloadItem::getRemoteFileId)
+                .containsExactly(tuple(null, "model-a"));
+    }
 }

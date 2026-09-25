@@ -4,10 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 // The folder is the source of truth for what files exist, not the email
 // text (see the design doc's "Handling folders that fill in over time").
@@ -81,7 +84,11 @@ public class FolderSyncJob {
 
         Optional<String> folderId = GoogleDriveUrls.tryExtractFolderId(source.getSourceUrl());
         if (folderId.isPresent()) {
-            syncFolder(source, folderId.get());
+            if (source.getFolderLayout() == FolderLayout.COLLECTIONS) {
+                syncCollections(source, folderId.get());
+            } else {
+                syncFolder(source, folderId.get());
+            }
             return;
         }
 
@@ -125,6 +132,67 @@ public class FolderSyncJob {
         downloadSourceRepository.save(source);
         log.info("Synced source {} - {} entr{} found, {}", source.getId(), entries.size(),
                 entries.size() == 1 ? "y" : "ies", foundNew ? "new item(s) registered" : "nothing new");
+    }
+
+    // A persistent link whose top-level folders group collections - usually
+    // one folder per creator holding one folder per monthly release, but
+    // real links mix in other top-level folders ("Terrain Pack", a
+    // year-range archive), so this never assumes every top-level folder is
+    // a creator:
+    //  - a top-level folder's children each become one item, grouped under
+    //    that folder's name;
+    //  - a top-level folder that is one model's own folder (only
+    //    organizational children) becomes one item itself;
+    //  - a top-level file becomes one item.
+    // An empty top-level folder registers nothing yet and is simply looked
+    // at again next sync. Identity is the Drive ID, as everywhere else, so
+    // a collection that rotates out of the link keeps its item.
+    private void syncCollections(DownloadSource source, String folderId) {
+        List<NestedDriveEntry> entries = driveFolderListing.listTwoLevels(folderId);
+        // Keyed by the parent's name, since that's all a nested entry
+        // carries. Two top-level folders sharing a name would merge here -
+        // rclone can't tell them apart by path either.
+        Map<String, List<DriveEntry>> childrenByParent = entries.stream()
+                .filter(entry -> !entry.isTopLevel())
+                .collect(Collectors.groupingBy(NestedDriveEntry::parentName, LinkedHashMap::new,
+                        Collectors.mapping(NestedDriveEntry::entry, Collectors.toList())));
+
+        boolean foundNew = false;
+        int topLevelCount = 0;
+        for (NestedDriveEntry nested : entries) {
+            if (!nested.isTopLevel()) {
+                continue;
+            }
+            topLevelCount++;
+            DriveEntry topLevel = nested.entry();
+            if (!topLevel.isDirectory()) {
+                foundNew |= registerIfNew(source, stripExtension(topLevel.name()), topLevel.id(), false, null);
+                continue;
+            }
+            List<DriveEntry> children = childrenByParent.getOrDefault(topLevel.name(), List.of());
+            if (looksLikeASingleModelsOwnFolder(children)) {
+                foundNew |= registerIfNew(source, topLevel.name(), topLevel.id(), true, null);
+                continue;
+            }
+            for (DriveEntry child : children) {
+                String name = child.isDirectory() ? child.name() : stripExtension(child.name());
+                foundNew |= registerIfNew(source, name, child.id(), child.isDirectory(), topLevel.name());
+            }
+        }
+
+        source.markSynced(foundNew);
+        downloadSourceRepository.save(source);
+        log.info("Synced collections source {} - {} top-level entr{} found, {}", source.getId(), topLevelCount,
+                topLevelCount == 1 ? "y" : "ies", foundNew ? "new item(s) registered" : "nothing new");
+    }
+
+    private boolean registerIfNew(DownloadSource source, String modelName, String remoteFileId,
+                                  boolean isDirectory, String groupName) {
+        if (downloadItemRepository.findBySourceIdAndRemoteFileId(source.getId(), remoteFileId).isPresent()) {
+            return false;
+        }
+        downloadItemRepository.save(new DownloadItem(source, modelName, remoteFileId, isDirectory, groupName));
+        return true;
     }
 
     private static boolean looksLikeASingleModelsOwnFolder(List<DriveEntry> entries) {
