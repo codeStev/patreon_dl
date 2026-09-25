@@ -137,6 +137,27 @@ the UI) is deliberately conservative — both to avoid HDD seek-thrashing and
 to avoid Google flagging the account for too many concurrent Drive API
 requests. Raise it only if you know what you're doing.
 
+## Operations
+
+### Resetting ingest data
+
+To wipe everything Ingestion/Fulfillment has discovered (sources, download
+items, processed-email audit trail) and pick up a freshly published image,
+without losing your configured settings (`app_settings`,
+`ingestion_settings`, `provider_settings` — poll interval, concurrency,
+per-provider download policy):
+
+```bash
+cd deploy/combined
+docker compose exec db psql -U app -d patreon_ingest -c "TRUNCATE download_item, download_source, processed_email RESTART IDENTITY CASCADE;" && docker compose up -d --pull always app
+```
+
+This truncates only the ingest data tables, then pulls the latest `app`
+image and force-recreates just that container — `db` is left running
+untouched. Useful after a schema-affecting bug produced corrupted rows —
+during bring-up, a full wipe-and-rescan is generally faster and safer than
+writing one-off backfill code to patch corrupted rows in place.
+
 ## Developing
 
 Requires JDK 25, Docker (the test suite uses Testcontainers against a real
@@ -193,14 +214,9 @@ design doc's "Open / unresolved" section for what's genuinely undecided
 versus just not-yet-implemented.
 
 Known gaps found against real production data, not yet addressed:
-- **Single-file Google Drive shares** (`.../file/d/<id>/view`, as opposed to
-  a folder link) aren't downloadable at all — `FolderSyncJob` flags them
-  `link_dead` on sight so they don't get retried forever, but nothing
-  actually fetches a lone shared file. Unclear yet whether this is a
-  recurring real content shape or a one-off.
 - **No way to un-flag a `link_dead` source** from the UI or API once set —
-  recovering one flagged in error (e.g. the case above) needs a direct DB
-  edit. Not urgent while it's rare.
+  recovering one flagged in error needs a direct DB edit. Not urgent while
+  it's rare.
 - **No admin UI for `processed_email` parse failures/mismatches** — the
   data (parse status, error message per email) is tracked, but nothing
   surfaces "which emails failed to parse or matched no parser" visually
