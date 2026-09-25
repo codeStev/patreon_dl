@@ -5,6 +5,9 @@ import java.util.UUID;
 
 public record ItemOverviewResponse(
         UUID id,
+        // The top-level folder (usually the creator) a collection came
+        // from - null except for items of COLLECTIONS sources.
+        String groupName,
         String modelName,
         String status,
         // false for claim-only / manual-retrieval items (e.g. Gumroad, MMF) -

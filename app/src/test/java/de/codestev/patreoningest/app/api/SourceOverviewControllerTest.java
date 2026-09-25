@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -90,5 +91,56 @@ class SourceOverviewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].items").isArray())
                 .andExpect(jsonPath("$[0].items").isEmpty());
+    }
+
+    @Test
+    void aDriveLinkCanBeAddedByHandAndItsCollectionsAreListedWithTheirGroup() throws Exception {
+        String body = """
+                {"name": "my-archive", "url": "https://drive.google.com/drive/folders/rolling-api-1",
+                 "layout": "COLLECTIONS"}
+                """;
+
+        mockMvc.perform(post("/api/sources").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.creator").value("my-archive"))
+                .andExpect(jsonPath("$.sourceType").value("DRIVE"))
+                .andExpect(jsonPath("$.folderLayout").value("COLLECTIONS"))
+                .andExpect(jsonPath("$.claimStatus").value("CLAIMED"));
+
+        DownloadSource source = downloadSourceRepository
+                .findByCreatorAndSourceUrl("my-archive", "https://drive.google.com/drive/folders/rolling-api-1")
+                .orElseThrow();
+        downloadItemRepository.save(new DownloadItem(source, "2025-01 Release", "collection-1", true, "Titan Forge"));
+
+        mockMvc.perform(get("/api/sources"))
+                .andExpect(jsonPath("$[0].items[0].groupName").value("Titan Forge"))
+                .andExpect(jsonPath("$[0].items[0].modelName").value("2025-01 Release"));
+    }
+
+    @Test
+    void addingALinkWithoutALayoutDefaultsToModels() throws Exception {
+        mockMvc.perform(post("/api/sources").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "loose-files", "url": "https://drive.google.com/drive/folders/flat-api-1"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.folderLayout").value("MODELS"));
+    }
+
+    @Test
+    void anInvalidLinkIsRejectedWithAReason() throws Exception {
+        mockMvc.perform(post("/api/sources").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "my-archive", "url": "https://example.com/nope", "layout": "COLLECTIONS"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Not a Google Drive folder or file link"));
+
+        mockMvc.perform(post("/api/sources").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "nomnom", "url": "https://drive.google.com/drive/folders/x1"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("That name belongs to an email provider - pick another"));
     }
 }

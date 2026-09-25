@@ -1,16 +1,20 @@
 package de.codestev.patreoningest.app.api;
 
+import de.codestev.patreoningest.core.acquisition.AddManualSourceUseCase;
 import de.codestev.patreoningest.core.acquisition.DownloadItem;
 import de.codestev.patreoningest.core.acquisition.DownloadItemRepository;
 import de.codestev.patreoningest.core.acquisition.DownloadSource;
 import de.codestev.patreoningest.core.acquisition.DownloadSourceRepository;
+import de.codestev.patreoningest.core.acquisition.FolderLayout;
 import de.codestev.patreoningest.core.acquisition.MarkClaimedManuallyUseCase;
 import de.codestev.patreoningest.core.fulfillment.DownloadCapability;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,15 +35,38 @@ public class SourceOverviewController {
     private final DownloadItemRepository downloadItemRepository;
     private final MarkClaimedManuallyUseCase markClaimedManuallyUseCase;
     private final DownloadCapability downloadCapability;
+    private final AddManualSourceUseCase addManualSourceUseCase;
 
     public SourceOverviewController(DownloadSourceRepository downloadSourceRepository,
                                      DownloadItemRepository downloadItemRepository,
                                      MarkClaimedManuallyUseCase markClaimedManuallyUseCase,
-                                     DownloadCapability downloadCapability) {
+                                     DownloadCapability downloadCapability,
+                                     AddManualSourceUseCase addManualSourceUseCase) {
         this.downloadSourceRepository = downloadSourceRepository;
         this.downloadItemRepository = downloadItemRepository;
         this.markClaimedManuallyUseCase = markClaimedManuallyUseCase;
         this.downloadCapability = downloadCapability;
+        this.addManualSourceUseCase = addManualSourceUseCase;
+    }
+
+    // A Drive link added by hand (e.g. a persistent link that keeps getting
+    // new releases). The next FolderSyncJob run picks it up.
+    @PostMapping
+    public ResponseEntity<?> add(@RequestBody AddSourceRequest request) {
+        FolderLayout layout = request.layout() != null ? request.layout() : FolderLayout.MODELS;
+        AddManualSourceUseCase.Result result = addManualSourceUseCase.add(request.name(), request.url(), layout);
+        return switch (result.outcome()) {
+            case ADDED -> ResponseEntity.status(HttpStatus.CREATED).body(toResponse(result.source()));
+            case INVALID_NAME -> badRequest("Name must be 1-100 characters and can't contain / \\ : * ? \" < > |");
+            case RESERVED_NAME -> badRequest("That name belongs to an email provider - pick another");
+            case NOT_A_DRIVE_LINK -> badRequest("Not a Google Drive folder or file link");
+            case COLLECTIONS_NEED_A_FOLDER -> badRequest("A single file can't hold collections - use a folder link");
+            case ALREADY_EXISTS -> badRequest("This link was already added under that name");
+        };
+    }
+
+    private static ResponseEntity<Map<String, String>> badRequest(String message) {
+        return ResponseEntity.badRequest().body(Map.of("message", message));
     }
 
     // The operator claimed this source by hand (e.g. after a bot-check
@@ -75,6 +102,7 @@ public class SourceOverviewController {
                 source.getMonthLabel(),
                 source.getSourceType().name(),
                 source.getSourceUrl(),
+                source.getFolderLayout().name(),
                 source.getClaimType() != null ? source.getClaimType().name() : null,
                 source.getClaimStatus().name(),
                 source.getClaimNote(),
@@ -88,6 +116,7 @@ public class SourceOverviewController {
     private static ItemOverviewResponse toResponse(DownloadItem item, boolean downloadable) {
         return new ItemOverviewResponse(
                 item.getId(),
+                item.getGroupName(),
                 item.getModelName(),
                 item.getStatus().name(),
                 downloadable,

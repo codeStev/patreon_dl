@@ -11,6 +11,7 @@ public record SourceOverviewResponse(
         String monthLabel,
         String sourceType,
         String sourceUrl,
+        String folderLayout,
         String claimType,
         String claimStatus,
         String claimNote,
