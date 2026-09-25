@@ -137,6 +137,23 @@ the UI) is deliberately conservative — both to avoid HDD seek-thrashing and
 to avoid Google flagging the account for too many concurrent Drive API
 requests. Raise it only if you know what you're doing.
 
+### Adding a Drive link by hand
+
+Some Drive links never arrive by email, such as a persistent folder someone
+keeps filling with new releases. Add one from the **Add Drive link** form
+at the top of the overview:
+- **Name**: becomes that link's own entry in Settings (download policy,
+  `Manual` until you change it) and its folder under `DOWNLOAD_PATH`.
+- **One item per collection**: for links whose top-level folders (usually
+  one per creator) each hold collections such as monthly releases. Each
+  collection becomes one item and downloads to
+  `<DOWNLOAD_PATH>/<name>/<creator folder>/<collection>`.
+- **One item per top-level entry**: how email-announced Drive folders
+  work.
+
+Items appear after the next folder sync. New collections added to the link
+later are picked up automatically.
+
 ## Operations
 
 ### Resetting ingest data
@@ -157,6 +174,9 @@ image and force-recreates just that container — `db` is left running
 untouched. Useful after a schema-affecting bug produced corrupted rows —
 during bring-up, a full wipe-and-rescan is generally faster and safer than
 writing one-off backfill code to patch corrupted rows in place.
+
+Drive links you added by hand live in `download_source` too, so re-add
+them afterwards; their Settings entries survive.
 
 ## Developing
 

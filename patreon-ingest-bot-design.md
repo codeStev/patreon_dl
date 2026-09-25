@@ -388,6 +388,31 @@ public interface SourceDownloader {
 - No Gumroad implementation exists or is needed: per the state machine below,
   Wicked's actual files come from its bulk Drive "term folder," never from
   Gumroad itself — Gumroad-sourced items only ever need `ClaimPort`.
+  **Documented fallback, not built:** if a Gumroad-only source ever appears
+  (or a Drive term folder disappears), a claimed product can be downloaded
+  over plain HTTP from the `/d/<token>` receipt `GumroadClaimAdapter`
+  already stores, plus `GUMROAD_EMAIL`. No browser and no Gumroad login;
+  verified live on 2026-09-25:
+  1. `GET /d/<token>` → 302 to `/confirm?destination=download_page&id=<token>`
+     once the link has been opened before from another IP.
+  2. `GET /confirm?...` → the Inertia `data-page` props carry
+     `authenticity_token`.
+  3. `POST /confirm-redirect` (not `/confirm`) with `authenticity_token`,
+     `id`, `destination=download_page` and `email` → sets the encrypted
+     `confirmed_redirect` cookie.
+  4. `GET /d/<token>` → `props.content.content_items`: file name, extension,
+     size and id per file.
+  5. `GET /r/<token>/product_files?product_file_ids[]=…` with
+     `Accept: application/json` → `{files: [{url, filename}]}`. These are
+     signed `files.gumroad.com` URLs with a `verify` parameter, likely
+     short-lived, so fetch them right before each file.
+  6. Range requests work (206), so multi-GB files are resumable.
+     `/zip/<token>` returned `{"url": null}` (no prebuilt archive), so
+     per-file is the reliable path.
+  Gumroad's public v2 API doesn't help here: it is seller-only. Its buyer
+  API (`/mobile/*`) needs the official app's secret `mobile_token` and a
+  deliberately hidden `mobile_api` OAuth scope, so it is not an option for
+  an OSS tool.
 
 New provider using existing mechanisms → one parser class.
 New distribution mechanism entirely → one `SourceDownloader` implementation,
@@ -520,6 +545,46 @@ Sync should commit `download_item` status **per file**, not per source/folder
 as one all-or-nothing unit — so a link dying mid-sync leaves you with whatever
 was already pulled, not nothing.
 
+## Manually added persistent Drive links
+
+Some Drive links never arrive by email. They are persistent: one URL that
+someone keeps filling with new releases. The usual shape is one top-level
+folder per creator, each holding one folder per collection (typically a
+monthly release). The shape isn't strict, though: real links mix in
+top-level folders that aren't creators (a "Terrain Pack", a year-range
+archive of one creator).
+
+- **Adding one:** the operator adds the link in the admin UI with a name
+  and a layout (`POST /api/sources` → `AddManualSourceUseCase`). The name
+  takes the place of a parser's provider id. It gets its own
+  `provider_settings` row (default `MANUAL`, like seeded providers) and
+  becomes the link's top-level download folder. Parser provider ids are
+  reserved, so a link can never silently share a provider's policy or
+  folder. The source is a claimed `DRIVE` source with `claim_type = NONE`,
+  exactly like an email-parsed Drive link.
+- **`folder_layout`** says how `FolderSyncJob` reads a Drive folder source.
+  `MODELS` (every email-parsed source): each top-level entry is one model,
+  as in the section above. `COLLECTIONS`: one `rclone lsjson --max-depth 2`
+  call per sync (not one per creator folder, to keep Drive API traffic
+  low), then:
+  - each child of a top-level folder becomes one item, with that folder's
+    name in `download_item.group_name`;
+  - a top-level folder whose children are all organizational (STL,
+    Presupported, …) is one model's own folder and becomes a single
+    ungrouped item;
+  - a top-level file becomes a single ungrouped item;
+  - an empty top-level folder registers nothing yet and is re-checked on
+    the next sync.
+- **Why "rolling" needs no new job:** identity is the Drive id
+  (`remote_file_id`), same as everywhere else, and `FolderSyncJob` already
+  re-diffs every claimed Drive source on its schedule. A new monthly
+  release shows up as a new item on the next sync. A collection that
+  rotates out of the link keeps its item: downloaded files stay put, and a
+  still-pending one fails permanently on rclone's "not found" exit code.
+- **Disk layout:** `<download root>/<link name>/<group>/<collection>`.
+  Everything from one link stays together, and can't collide with the
+  creator folders the parsers write.
+
 ## Storage constraints (10TB HDD)
 
 - Never silently skip a download due to low space (a dead Drive link is
@@ -620,6 +685,7 @@ create table download_source (
     claimed_at timestamp,
     quiet_since timestamp,        -- set once no new files appear for 40 days
     link_dead boolean not null default false,
+    folder_layout varchar not null default 'MODELS', -- MODELS, COLLECTIONS
     unique (creator, source_url)
 );
 
@@ -635,6 +701,7 @@ create table download_item (
     last_error varchar,
     discovered_at timestamp not null,
     downloaded_at timestamp,
+    group_name varchar,           -- COLLECTIONS sources: top-level folder (usually the creator)
     unique (source_id, remote_file_id)
 );
 
@@ -675,6 +742,9 @@ the Performance section is trying to eliminate.
 ## Admin UI surfaces
 
 - **Overview**: per-creator/month breakdown of models, status, size.
+  Collections of a `COLLECTIONS` source show as "Group / Collection".
+- **Add Drive link**: name, URL and layout, for persistent links that no
+  email announces (see "Manually added persistent Drive links").
 - **Claimed-but-not-downloaded queue**: for MANUAL-policy providers (Wicked),
   with per-item or per-provider "download now" trigger.
 - **Provider settings panel**: download policy per provider.
