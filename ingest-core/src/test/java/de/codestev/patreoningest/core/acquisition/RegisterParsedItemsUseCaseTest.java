@@ -96,7 +96,7 @@ class RegisterParsedItemsUseCaseTest {
     }
 
     @Test
-    void aGumroadItemStaysDiscoveredSinceNoClaimPortExistsYet() {
+    void aGumroadItemStaysDiscoveredForTheClaimQueueToPickUp() {
         ParsedItem wickedItem = new ParsedItem("wicked", null, null, SourceType.GUMROAD,
                 "https://wicked.gumroad.com/l/example", ClaimType.GUMROAD, "Example Model");
 

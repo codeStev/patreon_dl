@@ -2,43 +2,26 @@ package de.codestev.patreoningest.core.acquisition;
 
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-import java.util.Optional;
-
+// Runs at registration time, inline with mailbox polling - so it only ever
+// performs the implicit claim (DRIVE/MMF: nothing external to do). Sources
+// that need a real external action (claimType != NONE, e.g. Gumroad) are
+// left DISCOVERED here and picked up by ClaimQueueJob in the background.
 @Component
 public class ClaimSourceUseCase {
 
-    private final List<ClaimPort> claimPorts;
     private final DownloadSourceRepository downloadSourceRepository;
 
-    public ClaimSourceUseCase(List<ClaimPort> claimPorts, DownloadSourceRepository downloadSourceRepository) {
-        this.claimPorts = claimPorts;
+    public ClaimSourceUseCase(DownloadSourceRepository downloadSourceRepository) {
         this.downloadSourceRepository = downloadSourceRepository;
     }
 
     public void claim(DownloadSource source) {
-        if (source.getClaimStatus() == ClaimStatus.CLAIMED) {
+        if (source.getClaimStatus() != ClaimStatus.DISCOVERED) {
             return;
         }
-
-        Optional<ClaimPort> port = claimPorts.stream()
-                .filter(p -> p.supports() == source.getSourceType())
-                .findFirst();
-
-        if (port.isEmpty() && source.getClaimType() != ClaimType.NONE) {
-            // A claim mechanism is genuinely expected for this source type
-            // (e.g. Gumroad) but no adapter for it exists yet - leave it
-            // DISCOVERED rather than silently (and incorrectly) marking it
-            // claimed. This is different from DRIVE/MMF, which have no
-            // ClaimPort because none is ever needed, not because one is
-            // missing.
+        if (source.getClaimType() != null && source.getClaimType() != ClaimType.NONE) {
             return;
         }
-
-        // A registered ClaimPort performs the real external action (e.g.
-        // Gumroad checkout); no port at all AND claimType == NONE means
-        // claiming is implicit for this source type (DRIVE, MMF).
-        port.ifPresent(p -> p.claim(source));
 
         source.markClaimed();
         downloadSourceRepository.save(source);

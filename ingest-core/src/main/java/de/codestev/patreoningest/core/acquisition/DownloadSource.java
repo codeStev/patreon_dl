@@ -16,6 +16,8 @@ import java.util.UUID;
 @Table(name = "download_source")
 public class DownloadSource {
 
+    public static final String ALREADY_OWNED_NOTE = "Already owned - claimed outside the app";
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -58,6 +60,20 @@ public class DownloadSource {
     @Column(name = "link_dead", nullable = false)
     private boolean linkDead;
 
+    @Column(name = "claim_receipt_url")
+    private String claimReceiptUrl;
+
+    // Why the last automated claim attempt didn't succeed - shown in the
+    // admin UI next to a NEEDS_MANUAL source.
+    @Column(name = "claim_note")
+    private String claimNote;
+
+    @Column(name = "claim_attempts", nullable = false)
+    private int claimAttempts;
+
+    @Column(name = "next_claim_attempt_at")
+    private LocalDateTime nextClaimAttemptAt;
+
     protected DownloadSource() {
         // JPA
     }
@@ -76,8 +92,34 @@ public class DownloadSource {
     }
 
     public void markClaimed() {
+        markClaimed(null);
+    }
+
+    public void markClaimed(String receiptUrl) {
         this.claimStatus = ClaimStatus.CLAIMED;
         this.claimedAt = LocalDateTime.now();
+        this.claimReceiptUrl = receiptUrl;
+        this.claimNote = null;
+        this.nextClaimAttemptAt = null;
+    }
+
+    // Claimed outside the app (no receipt of ours) - the note tells the
+    // two apart in the admin UI.
+    public void markClaimedAlreadyOwned() {
+        markClaimed(null);
+        this.claimNote = ALREADY_OWNED_NOTE;
+    }
+
+    public void markNeedsManualClaim(String reason) {
+        this.claimStatus = ClaimStatus.NEEDS_MANUAL;
+        this.claimNote = reason;
+        this.nextClaimAttemptAt = null;
+    }
+
+    public void markClaimAttemptFailed(String reason, LocalDateTime nextAttemptAt) {
+        this.claimAttempts++;
+        this.claimNote = reason;
+        this.nextClaimAttemptAt = nextAttemptAt;
     }
 
     public void markLinkDead() {
@@ -143,5 +185,21 @@ public class DownloadSource {
 
     public boolean isLinkDead() {
         return linkDead;
+    }
+
+    public String getClaimReceiptUrl() {
+        return claimReceiptUrl;
+    }
+
+    public String getClaimNote() {
+        return claimNote;
+    }
+
+    public int getClaimAttempts() {
+        return claimAttempts;
+    }
+
+    public LocalDateTime getNextClaimAttemptAt() {
+        return nextClaimAttemptAt;
     }
 }
