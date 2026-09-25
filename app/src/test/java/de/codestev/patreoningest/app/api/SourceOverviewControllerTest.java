@@ -18,7 +18,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.util.UUID;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -56,6 +59,25 @@ class SourceOverviewControllerTest {
                 .andExpect(jsonPath("$[0].claimStatus").value("CLAIMED"))
                 .andExpect(jsonPath("$[0].items[0].modelName").value("Wolverine"))
                 .andExpect(jsonPath("$[0].items[0].status").value("PENDING"));
+    }
+
+    @Test
+    void aSourceNeedingAManualClaimCanBeMarkedClaimed() throws Exception {
+        DownloadSource source = new DownloadSource("wicked", null, null,
+                SourceType.GUMROAD, "https://wicked.gumroad.com/l/overview-test/code", ClaimType.GUMROAD);
+        source.markNeedsManualClaim("Gumroad showed a reCAPTCHA challenge - claim it by hand");
+        downloadSourceRepository.save(source);
+
+        mockMvc.perform(get("/api/sources"))
+                .andExpect(jsonPath("$[0].claimStatus").value("NEEDS_MANUAL"))
+                .andExpect(jsonPath("$[0].claimNote").value("Gumroad showed a reCAPTCHA challenge - claim it by hand"));
+
+        mockMvc.perform(post("/api/sources/{id}/mark-claimed", source.getId()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/sources/{id}/mark-claimed", source.getId()))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/sources/{id}/mark-claimed", UUID.randomUUID()))
+                .andExpect(status().isNotFound());
     }
 
     @Test

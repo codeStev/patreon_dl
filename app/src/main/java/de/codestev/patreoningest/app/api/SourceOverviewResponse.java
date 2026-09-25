@@ -13,6 +13,8 @@ public record SourceOverviewResponse(
         String sourceUrl,
         String claimType,
         String claimStatus,
+        String claimNote,
+        String claimReceiptUrl,
         boolean linkDead,
         LocalDateTime firstSeen,
         LocalDateTime claimedAt,
