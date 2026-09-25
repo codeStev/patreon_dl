@@ -21,7 +21,8 @@ import java.util.concurrent.ExecutorService;
 public class TriggerManualDownloadUseCase {
 
     public enum Result {
-        DISPATCHED, NOT_FOUND, ALREADY_DOWNLOADED, NOT_CLAIMED, LINK_DEAD, CONCURRENCY_LIMIT_REACHED
+        DISPATCHED, NOT_FOUND, ALREADY_DOWNLOADED, NOT_DOWNLOADABLE, NOT_CLAIMED, LINK_DEAD,
+        CONCURRENCY_LIMIT_REACHED
     }
 
     private final DownloadItemRepository downloadItemRepository;
@@ -29,17 +30,20 @@ public class TriggerManualDownloadUseCase {
     private final DownloadConcurrencyTracker concurrencyTracker;
     private final ExecuteDownloadUseCase executeDownloadUseCase;
     private final ExecutorService downloadExecutor;
+    private final DownloadCapability downloadCapability;
 
     public TriggerManualDownloadUseCase(DownloadItemRepository downloadItemRepository,
                                          AppSettingsRepository appSettingsRepository,
                                          DownloadConcurrencyTracker concurrencyTracker,
                                          ExecuteDownloadUseCase executeDownloadUseCase,
-                                         ExecutorService downloadExecutor) {
+                                         ExecutorService downloadExecutor,
+                                         DownloadCapability downloadCapability) {
         this.downloadItemRepository = downloadItemRepository;
         this.appSettingsRepository = appSettingsRepository;
         this.concurrencyTracker = concurrencyTracker;
         this.executeDownloadUseCase = executeDownloadUseCase;
         this.downloadExecutor = downloadExecutor;
+        this.downloadCapability = downloadCapability;
     }
 
     @Transactional
@@ -52,6 +56,9 @@ public class TriggerManualDownloadUseCase {
 
         if (item.getStatus() == ItemStatus.DOWNLOADED) {
             return Result.ALREADY_DOWNLOADED;
+        }
+        if (!downloadCapability.canDownload(item.getSource().getSourceType())) {
+            return Result.NOT_DOWNLOADABLE;
         }
         if (item.getSource().getClaimStatus() != ClaimStatus.CLAIMED) {
             return Result.NOT_CLAIMED;

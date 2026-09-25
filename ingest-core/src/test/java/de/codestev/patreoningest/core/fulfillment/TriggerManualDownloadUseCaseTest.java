@@ -111,6 +111,19 @@ class TriggerManualDownloadUseCaseTest {
     }
 
     @Test
+    void rejectsAnItemTheAppHasNoDownloaderFor() {
+        DownloadSource source = new DownloadSource("wicked", null, null,
+                SourceType.GUMROAD, "https://wicked.gumroad.com/l/model/code", ClaimType.GUMROAD);
+        source.markClaimed();
+        downloadSourceRepository.save(source);
+        DownloadItem item = downloadItemRepository.save(new DownloadItem(source, "Model", null));
+
+        assertThat(triggerManualDownloadUseCase.trigger(item.getId()))
+                .isEqualTo(TriggerManualDownloadUseCase.Result.NOT_DOWNLOADABLE);
+        assertThat(concurrencyTracker.current()).isZero();
+    }
+
+    @Test
     void rejectsAnItemWhoseSourceIsNotClaimedYet() {
         DownloadSource source = new DownloadSource("wicked", null, null,
                 SourceType.DRIVE, "https://drive.example/discovered", ClaimType.NONE);

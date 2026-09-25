@@ -5,6 +5,7 @@ import de.codestev.patreoningest.core.acquisition.DownloadItemRepository;
 import de.codestev.patreoningest.core.acquisition.DownloadSource;
 import de.codestev.patreoningest.core.acquisition.DownloadSourceRepository;
 import de.codestev.patreoningest.core.acquisition.MarkClaimedManuallyUseCase;
+import de.codestev.patreoningest.core.fulfillment.DownloadCapability;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,13 +30,16 @@ public class SourceOverviewController {
     private final DownloadSourceRepository downloadSourceRepository;
     private final DownloadItemRepository downloadItemRepository;
     private final MarkClaimedManuallyUseCase markClaimedManuallyUseCase;
+    private final DownloadCapability downloadCapability;
 
     public SourceOverviewController(DownloadSourceRepository downloadSourceRepository,
                                      DownloadItemRepository downloadItemRepository,
-                                     MarkClaimedManuallyUseCase markClaimedManuallyUseCase) {
+                                     MarkClaimedManuallyUseCase markClaimedManuallyUseCase,
+                                     DownloadCapability downloadCapability) {
         this.downloadSourceRepository = downloadSourceRepository;
         this.downloadItemRepository = downloadItemRepository;
         this.markClaimedManuallyUseCase = markClaimedManuallyUseCase;
+        this.downloadCapability = downloadCapability;
     }
 
     // The operator claimed this source by hand (e.g. after a bot-check
@@ -58,9 +62,10 @@ public class SourceOverviewController {
     }
 
     private SourceOverviewResponse toResponse(DownloadSource source) {
+        boolean downloadable = downloadCapability.canDownload(source.getSourceType());
         List<ItemOverviewResponse> items = downloadItemRepository.findBySourceId(source.getId())
                 .stream()
-                .map(SourceOverviewController::toResponse)
+                .map(item -> toResponse(item, downloadable))
                 .toList();
 
         return new SourceOverviewResponse(
@@ -80,11 +85,12 @@ public class SourceOverviewController {
                 items);
     }
 
-    private static ItemOverviewResponse toResponse(DownloadItem item) {
+    private static ItemOverviewResponse toResponse(DownloadItem item, boolean downloadable) {
         return new ItemOverviewResponse(
                 item.getId(),
                 item.getModelName(),
                 item.getStatus().name(),
+                downloadable,
                 item.getFileSizeBytes(),
                 item.getRetryCount(),
                 item.getLastError(),

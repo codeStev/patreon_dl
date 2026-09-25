@@ -7,6 +7,9 @@ public record ItemOverviewResponse(
         UUID id,
         String modelName,
         String status,
+        // false for claim-only / manual-retrieval items (e.g. Gumroad, MMF) -
+        // no SourceDownloader exists for them, so no "Download now".
+        boolean downloadable,
         Long fileSizeBytes,
         int retryCount,
         String lastError,

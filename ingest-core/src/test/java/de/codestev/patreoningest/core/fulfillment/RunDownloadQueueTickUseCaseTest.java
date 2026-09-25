@@ -97,6 +97,23 @@ class RunDownloadQueueTickUseCaseTest {
     }
 
     @Test
+    void anEagerItemTheAppHasNoDownloaderForIsNeverDispatched() {
+        providerSettingsRepository.save(new ProviderSettings("wicked", DownloadPolicy.EAGER));
+        DownloadSource gumroad = new DownloadSource("wicked", null, null,
+                SourceType.GUMROAD, "https://wicked.gumroad.com/l/model/code", ClaimType.GUMROAD);
+        gumroad.markClaimed();
+        downloadSourceRepository.save(gumroad);
+        DownloadItem item = downloadItemRepository.save(new DownloadItem(gumroad, "Model", null));
+
+        runDownloadQueueTickUseCase.tick();
+
+        assertThat(concurrencyTracker.current()).isZero();
+        assertThat(fakeSourceDownloader.callCount()).isZero();
+        assertThat(downloadItemRepository.findById(item.getId()).orElseThrow().getStatus())
+                .isEqualTo(ItemStatus.PENDING);
+    }
+
+    @Test
     void anEagerPolicyItemGetsDispatchedAndDownloaded() {
         providerSettingsRepository.save(new ProviderSettings("bulkamancer", DownloadPolicy.EAGER));
         DownloadItem item = pendingItem("bulkamancer", "https://drive.example/eager");

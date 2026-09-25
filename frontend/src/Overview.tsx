@@ -4,6 +4,7 @@ type Item = {
   id: string;
   modelName: string | null;
   status: "PENDING" | "DOWNLOADED" | "FAILED";
+  downloadable: boolean;
   fileSizeBytes: number | null;
   retryCount: number;
   lastError: string | null;
@@ -141,12 +142,22 @@ export default function Overview() {
                 <li key={item.id}>
                   {item.modelName ?? <em>(unnamed)</em>}
                   {" — "}
-                  <span style={{ color: ITEM_COLORS[item.status] }}>{item.status}</span>
-                  {item.status === "FAILED" && item.lastError && (
-                    <span style={{ color: "#cf222e" }}> ({item.lastError})</span>
-                  )}
-                  {(item.status === "PENDING" || item.status === "FAILED") && (
-                    <DownloadNowButton itemId={item.id} onDispatched={refresh} />
+                  {item.downloadable ? (
+                    <>
+                      <span style={{ color: ITEM_COLORS[item.status] }}>{item.status}</span>
+                      {item.status === "FAILED" && item.lastError && (
+                        <span style={{ color: "#cf222e" }}> ({item.lastError})</span>
+                      )}
+                      {(item.status === "PENDING" || item.status === "FAILED") && (
+                        <DownloadNowButton itemId={item.id} onDispatched={refresh} />
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ color: "#57606a", fontSize: "0.85em" }}>
+                      not downloaded by the app — {source.sourceType === "GUMROAD"
+                        ? "redeem only, files come from the creator's Drive folder"
+                        : "retrieve it manually"}
+                    </span>
                   )}
                 </li>
               ))}

@@ -449,7 +449,11 @@ links.
 public enum DownloadPolicy { EAGER, MANUAL, DISABLED }
 ```
 
-- `EAGER`: sync loop downloads automatically once an item is claimed.
+- `EAGER`: sync loop downloads automatically once an item is claimed —
+  only items the app *can* download (a `SourceDownloader` exists for the
+  source type). Claim-only or manual-retrieval items (Wicked's Gumroad lines,
+  Bulkamancer's MMF entries) are never dispatched, not by the queue and not by
+  "download now"; the overview labels them "not downloaded by the app".
 - `MANUAL`: item stays at CLAIMED; download only on explicit user trigger from
   the UI (per-item or per-provider "download now").
 - `DISABLED`: don't even claim; ignore the provider entirely.

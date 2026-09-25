@@ -28,6 +28,7 @@ public class DownloadItemController {
             case DISPATCHED -> ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("status", "DISPATCHED"));
             case NOT_FOUND -> ResponseEntity.notFound().build();
             case ALREADY_DOWNLOADED -> badRequest("Item is already downloaded");
+            case NOT_DOWNLOADABLE -> badRequest("The app can't download this kind of item - retrieve it manually");
             case NOT_CLAIMED -> badRequest("Item's source is not claimed yet");
             case LINK_DEAD -> badRequest("Item's source is flagged link-dead");
             case CONCURRENCY_LIMIT_REACHED -> ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(

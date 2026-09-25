@@ -33,19 +33,22 @@ public class RunDownloadQueueTickUseCase {
     private final DownloadConcurrencyTracker concurrencyTracker;
     private final ExecuteDownloadUseCase executeDownloadUseCase;
     private final ExecutorService downloadExecutor;
+    private final DownloadCapability downloadCapability;
 
     public RunDownloadQueueTickUseCase(AppSettingsRepository appSettingsRepository,
                                         DownloadItemRepository downloadItemRepository,
                                         ProviderSettingsRepository providerSettingsRepository,
                                         DownloadConcurrencyTracker concurrencyTracker,
                                         ExecuteDownloadUseCase executeDownloadUseCase,
-                                        ExecutorService downloadExecutor) {
+                                        ExecutorService downloadExecutor,
+                                        DownloadCapability downloadCapability) {
         this.appSettingsRepository = appSettingsRepository;
         this.downloadItemRepository = downloadItemRepository;
         this.providerSettingsRepository = providerSettingsRepository;
         this.concurrencyTracker = concurrencyTracker;
         this.executeDownloadUseCase = executeDownloadUseCase;
         this.downloadExecutor = downloadExecutor;
+        this.downloadCapability = downloadCapability;
     }
 
     public void tick() {
@@ -61,6 +64,11 @@ public class RunDownloadQueueTickUseCase {
         int dispatched = 0;
         for (DownloadItem candidate : candidates) {
             if (policyByCreator.get(candidate.getSource().getCreator()) != DownloadPolicy.EAGER) {
+                continue;
+            }
+            // Claim-only or manual-retrieval items (e.g. Gumroad, MMF) -
+            // EAGER means "download what the app can download", not these.
+            if (!downloadCapability.canDownload(candidate.getSource().getSourceType())) {
                 continue;
             }
             if (!concurrencyTracker.tryAcquire(settings.getMaxConcurrentDownloads())) {
