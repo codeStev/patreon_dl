@@ -21,6 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -142,5 +143,30 @@ class SourceOverviewControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("That name belongs to an email provider - pick another"));
+    }
+
+    @Test
+    void aHandAddedLinkCanBeRemovedButAnEmailParsedSourceCannot() throws Exception {
+        mockMvc.perform(post("/api/sources").contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "my-archive", "url": "https://drive.google.com/drive/folders/remove-api-1"}
+                                """))
+                .andExpect(jsonPath("$.addedManually").value(true));
+        DownloadSource added = downloadSourceRepository
+                .findByCreatorAndSourceUrl("my-archive", "https://drive.google.com/drive/folders/remove-api-1")
+                .orElseThrow();
+        DownloadSource parsed = downloadSourceRepository.save(new DownloadSource("nomnom", null, null,
+                SourceType.DRIVE, "https://drive.example/folder/parsed", ClaimType.NONE));
+
+        mockMvc.perform(get("/api/sources"))
+                .andExpect(jsonPath("$[?(@.creator == 'nomnom')].addedManually").value(false));
+
+        mockMvc.perform(delete("/api/sources/{id}", added.getId()))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/sources/{id}", added.getId()))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/sources/{id}", parsed.getId()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Only links added by hand can be removed"));
     }
 }

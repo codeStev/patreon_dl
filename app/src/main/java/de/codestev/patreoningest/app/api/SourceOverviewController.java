@@ -6,11 +6,14 @@ import de.codestev.patreoningest.core.acquisition.DownloadItemRepository;
 import de.codestev.patreoningest.core.acquisition.DownloadSource;
 import de.codestev.patreoningest.core.acquisition.DownloadSourceRepository;
 import de.codestev.patreoningest.core.acquisition.FolderLayout;
+import de.codestev.patreoningest.core.acquisition.ManualSources;
 import de.codestev.patreoningest.core.acquisition.MarkClaimedManuallyUseCase;
+import de.codestev.patreoningest.core.acquisition.RemoveManualSourceUseCase;
 import de.codestev.patreoningest.core.fulfillment.DownloadCapability;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,17 +39,23 @@ public class SourceOverviewController {
     private final MarkClaimedManuallyUseCase markClaimedManuallyUseCase;
     private final DownloadCapability downloadCapability;
     private final AddManualSourceUseCase addManualSourceUseCase;
+    private final RemoveManualSourceUseCase removeManualSourceUseCase;
+    private final ManualSources manualSources;
 
     public SourceOverviewController(DownloadSourceRepository downloadSourceRepository,
                                      DownloadItemRepository downloadItemRepository,
                                      MarkClaimedManuallyUseCase markClaimedManuallyUseCase,
                                      DownloadCapability downloadCapability,
-                                     AddManualSourceUseCase addManualSourceUseCase) {
+                                     AddManualSourceUseCase addManualSourceUseCase,
+                                     RemoveManualSourceUseCase removeManualSourceUseCase,
+                                     ManualSources manualSources) {
         this.downloadSourceRepository = downloadSourceRepository;
         this.downloadItemRepository = downloadItemRepository;
         this.markClaimedManuallyUseCase = markClaimedManuallyUseCase;
         this.downloadCapability = downloadCapability;
         this.addManualSourceUseCase = addManualSourceUseCase;
+        this.removeManualSourceUseCase = removeManualSourceUseCase;
+        this.manualSources = manualSources;
     }
 
     // A Drive link added by hand (e.g. a persistent link that keeps getting
@@ -62,6 +71,17 @@ public class SourceOverviewController {
             case NOT_A_DRIVE_LINK -> badRequest("Not a Google Drive folder or file link");
             case COLLECTIONS_NEED_A_FOLDER -> badRequest("A single file can't hold collections - use a folder link");
             case ALREADY_EXISTS -> badRequest("This link was already added under that name");
+        };
+    }
+
+    // Removes a hand-added link from the app. Files it already downloaded
+    // stay on disk.
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> remove(@PathVariable UUID id) {
+        return switch (removeManualSourceUseCase.remove(id)) {
+            case REMOVED -> ResponseEntity.noContent().build();
+            case NOT_FOUND -> ResponseEntity.notFound().build();
+            case NOT_ADDED_MANUALLY -> badRequest("Only links added by hand can be removed");
         };
     }
 
@@ -103,6 +123,7 @@ public class SourceOverviewController {
                 source.getSourceType().name(),
                 source.getSourceUrl(),
                 source.getFolderLayout().name(),
+                manualSources.isAddedManually(source),
                 source.getClaimType() != null ? source.getClaimType().name() : null,
                 source.getClaimStatus().name(),
                 source.getClaimNote(),

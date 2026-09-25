@@ -13,6 +13,8 @@ public interface DownloadSourceRepository extends JpaRepository<DownloadSource, 
 
     Optional<DownloadSource> findByCreatorAndSourceUrl(String creator, String sourceUrl);
 
+    boolean existsByCreator(String creator);
+
     List<DownloadSource> findBySourceTypeAndClaimStatusAndLinkDead(
             SourceType sourceType, ClaimStatus claimStatus, boolean linkDead);
 

@@ -13,6 +13,8 @@ public interface DownloadItemRepository extends JpaRepository<DownloadItem, UUID
 
     List<DownloadItem> findBySourceId(UUID sourceId);
 
+    void deleteBySourceId(UUID sourceId);
+
     Optional<DownloadItem> findBySourceIdAndRemoteFileId(UUID sourceId, String remoteFileId);
 
     // A null remoteFileId marks a directly-named registration (Bulkamancer

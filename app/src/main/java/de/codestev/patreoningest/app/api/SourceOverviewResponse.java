@@ -12,6 +12,9 @@ public record SourceOverviewResponse(
         String sourceType,
         String sourceUrl,
         String folderLayout,
+        // Added in the admin UI rather than by an email parser - only these
+        // can be removed again.
+        boolean addedManually,
         String claimType,
         String claimStatus,
         String claimNote,

@@ -1,14 +1,10 @@
 package de.codestev.patreoningest.core.acquisition;
 
-import de.codestev.patreoningest.core.ingestion.CreatorMessageParser;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 // The operator adds a Drive link by hand in the admin UI - typically a
 // persistent link that someone keeps filling with new releases, which no
@@ -34,18 +30,16 @@ public class AddManualSourceUseCase {
     private final DownloadSourceRepository downloadSourceRepository;
     private final ProviderSettingsRepository providerSettingsRepository;
     private final ClaimSourceUseCase claimSourceUseCase;
-    private final Set<String> parserProviderIds;
+    private final ManualSources manualSources;
 
     public AddManualSourceUseCase(DownloadSourceRepository downloadSourceRepository,
                                   ProviderSettingsRepository providerSettingsRepository,
                                   ClaimSourceUseCase claimSourceUseCase,
-                                  List<CreatorMessageParser> parsers) {
+                                  ManualSources manualSources) {
         this.downloadSourceRepository = downloadSourceRepository;
         this.providerSettingsRepository = providerSettingsRepository;
         this.claimSourceUseCase = claimSourceUseCase;
-        this.parserProviderIds = parsers.stream()
-                .map(CreatorMessageParser::providerId)
-                .collect(Collectors.toUnmodifiableSet());
+        this.manualSources = manualSources;
     }
 
     @Transactional
@@ -57,8 +51,9 @@ public class AddManualSourceUseCase {
             return rejected(Outcome.INVALID_NAME);
         }
         // Sharing a parser's name would silently merge this link into that
-        // provider's policy and download folder.
-        if (parserProviderIds.contains(name)) {
+        // provider's policy and download folder - and is what lets
+        // ManualSources tell hand-added sources apart.
+        if (manualSources.isReservedName(name)) {
             return rejected(Outcome.RESERVED_NAME);
         }
         Optional<String> folderId = GoogleDriveUrls.tryExtractFolderId(url);
