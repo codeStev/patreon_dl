@@ -152,7 +152,8 @@ at the top of the overview:
   work.
 
 Items appear after the next folder sync. New collections added to the link
-later are picked up automatically.
+later are picked up automatically. **Remove** on a hand-added link makes the
+app forget it and its items. Files already downloaded stay on disk.
 
 ## Operations
 

@@ -19,6 +19,7 @@ type Source = {
   sourceType: "DRIVE" | "GUMROAD" | "MMF";
   sourceUrl: string;
   folderLayout: "MODELS" | "COLLECTIONS";
+  addedManually: boolean;
   claimType: string | null;
   claimStatus: "DISCOVERED" | "NEEDS_MANUAL" | "CLAIMED";
   claimNote: string | null;
@@ -127,6 +128,7 @@ export default function Overview() {
             {source.linkDead && (
               <span style={{ fontSize: "0.85em", color: "#cf222e" }}>LINK DEAD</span>
             )}
+            {source.addedManually && <RemoveSourceButton sourceId={source.id} onRemoved={refresh} />}
           </div>
           <div style={{ marginTop: "0.25rem" }}>
             <a href={source.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: "0.85em" }}>
@@ -254,6 +256,51 @@ function AddDriveLinkForm({ onAdded }: { onAdded: () => void }) {
       </p>
       {error && <p role="alert" style={{ margin: "0.35rem 0 0", color: "#cf222e", fontSize: "0.85em" }}>{error}</p>}
     </form>
+  );
+}
+
+// Two clicks instead of a browser confirm dialog. Only the app forgets the
+// link - files it already downloaded stay on disk.
+function RemoveSourceButton({ sourceId, onRemoved }: { sourceId: string; onRemoved: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function remove() {
+    setPending(true);
+    setError(null);
+    fetch(`/api/sources/${sourceId}`, { method: "DELETE" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.message ?? `Request failed: ${res.status}`);
+        }
+        onRemoved();
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err));
+        setConfirming(false);
+      })
+      .finally(() => setPending(false));
+  }
+
+  return (
+    <span style={{ marginLeft: "auto", fontSize: "0.85em" }}>
+      {confirming ? (
+        <>
+          <span style={{ color: "#57606a" }}>Remove link? Downloaded files stay on disk. </span>
+          <button onClick={remove} disabled={pending} style={{ color: "#cf222e" }}>
+            {pending ? "Removing…" : "Remove"}
+          </button>{" "}
+          <button onClick={() => setConfirming(false)} disabled={pending}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button onClick={() => setConfirming(true)}>Remove</button>
+      )}
+      {error && <span style={{ color: "#cf222e" }}> {error}</span>}
+    </span>
   );
 }
 

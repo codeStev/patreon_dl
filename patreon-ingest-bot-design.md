@@ -581,6 +581,14 @@ archive of one creator).
   release shows up as a new item on the next sync. A collection that
   rotates out of the link keeps its item: downloaded files stay put, and a
   still-pending one fails permanently on rclone's "not found" exit code.
+- **Removing one:** `DELETE /api/sources/{id}` → `RemoveManualSourceUseCase`
+  deletes the source and its items. With the last link under a name, it
+  also deletes that name's `provider_settings` row. Downloaded files stay
+  on disk. There is no stored "manual" flag: parsers register under their
+  own provider id, and those ids are refused as names, so a source whose
+  creator isn't a parser id was added by hand (`ManualSources`).
+  Email-parsed sources can't be removed; the next mailbox scan would only
+  re-register them.
 - **Disk layout:** `<download root>/<link name>/<group>/<collection>`.
   Everything from one link stays together, and can't collide with the
   creator folders the parsers write.
