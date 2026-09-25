@@ -96,6 +96,26 @@ class AcquisitionPersistenceTest {
     }
 
     @Test
+    void roundTripsFolderLayoutAndGroupName() {
+        DownloadSource legacy = downloadSourceRepository.saveAndFlush(new DownloadSource(
+                "nomnom", null, null, SourceType.DRIVE,
+                "https://drive.example/folder/legacy", ClaimType.NONE));
+        DownloadSource rolling = downloadSourceRepository.saveAndFlush(new DownloadSource(
+                "my-archive", null, null, SourceType.DRIVE,
+                "https://drive.example/folder/rolling", ClaimType.NONE, FolderLayout.COLLECTIONS));
+        downloadItemRepository.saveAndFlush(
+                new DownloadItem(rolling, "2025-01 Release", "collection-1", true, "Titan Forge"));
+
+        assertThat(downloadSourceRepository.findById(legacy.getId()).orElseThrow().getFolderLayout())
+                .isEqualTo(FolderLayout.MODELS);
+        assertThat(downloadSourceRepository.findById(rolling.getId()).orElseThrow().getFolderLayout())
+                .isEqualTo(FolderLayout.COLLECTIONS);
+        assertThat(downloadItemRepository.findBySourceId(rolling.getId()))
+                .extracting(DownloadItem::getGroupName)
+                .containsExactly("Titan Forge");
+    }
+
+    @Test
     void savesAndFindsProviderSettings() {
         providerSettingsRepository.saveAndFlush(new ProviderSettings("wicked", DownloadPolicy.MANUAL));
 

@@ -31,7 +31,7 @@ class MigrationTest {
         MigrateResult result = flyway.migrate();
 
         assertThat(result.success).isTrue();
-        assertThat(result.migrationsExecuted).isEqualTo(7);
+        assertThat(result.migrationsExecuted).isEqualTo(8);
 
         Set<String> relations = new HashSet<>();
         try (Connection connection = DriverManager.getConnection(

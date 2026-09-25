@@ -74,12 +74,22 @@ public class DownloadSource {
     @Column(name = "next_claim_attempt_at")
     private LocalDateTime nextClaimAttemptAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "folder_layout", nullable = false)
+    private FolderLayout folderLayout;
+
     protected DownloadSource() {
         // JPA
     }
 
     public DownloadSource(String creator, String category, String monthLabel,
                            SourceType sourceType, String sourceUrl, ClaimType claimType) {
+        this(creator, category, monthLabel, sourceType, sourceUrl, claimType, FolderLayout.MODELS);
+    }
+
+    public DownloadSource(String creator, String category, String monthLabel,
+                           SourceType sourceType, String sourceUrl, ClaimType claimType,
+                           FolderLayout folderLayout) {
         this.creator = creator;
         this.category = category;
         this.monthLabel = monthLabel;
@@ -89,6 +99,7 @@ public class DownloadSource {
         this.claimStatus = ClaimStatus.DISCOVERED;
         this.firstSeen = LocalDateTime.now();
         this.linkDead = false;
+        this.folderLayout = folderLayout;
     }
 
     public void markClaimed() {
@@ -201,5 +212,9 @@ public class DownloadSource {
 
     public LocalDateTime getNextClaimAttemptAt() {
         return nextClaimAttemptAt;
+    }
+
+    public FolderLayout getFolderLayout() {
+        return folderLayout;
     }
 }

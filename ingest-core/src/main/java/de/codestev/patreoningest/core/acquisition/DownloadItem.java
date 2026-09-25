@@ -67,6 +67,11 @@ public class DownloadItem {
     @Column(name = "remote_is_directory")
     private Boolean remoteIsDirectory;
 
+    // The top-level folder a COLLECTIONS source's item was found in
+    // (usually the creator) - becomes a path segment on download.
+    @Column(name = "group_name")
+    private String groupName;
+
     protected DownloadItem() {
         // JPA
     }
@@ -76,10 +81,16 @@ public class DownloadItem {
     }
 
     public DownloadItem(DownloadSource source, String modelName, String remoteFileId, Boolean remoteIsDirectory) {
+        this(source, modelName, remoteFileId, remoteIsDirectory, null);
+    }
+
+    public DownloadItem(DownloadSource source, String modelName, String remoteFileId, Boolean remoteIsDirectory,
+                        String groupName) {
         this.source = source;
         this.modelName = modelName;
         this.remoteFileId = remoteFileId;
         this.remoteIsDirectory = remoteIsDirectory;
+        this.groupName = groupName;
         this.status = ItemStatus.PENDING;
         this.retryCount = 0;
         this.discoveredAt = LocalDateTime.now();
@@ -168,5 +179,9 @@ public class DownloadItem {
 
     public Boolean getRemoteIsDirectory() {
         return remoteIsDirectory;
+    }
+
+    public String getGroupName() {
+        return groupName;
     }
 }
