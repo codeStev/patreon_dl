@@ -10,4 +10,8 @@ import java.util.List;
 public interface DriveFolderListing {
 
     List<DriveEntry> list(String folderId);
+
+    // The top-level entries plus each top-level folder's direct children,
+    // in one listing - for FolderLayout.COLLECTIONS sources.
+    List<NestedDriveEntry> listTwoLevels(String folderId);
 }

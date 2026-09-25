@@ -2,6 +2,7 @@ package de.codestev.patreoningest.core.fulfillment;
 
 import de.codestev.patreoningest.core.acquisition.DriveEntry;
 import de.codestev.patreoningest.core.acquisition.DriveFolderListing;
+import de.codestev.patreoningest.core.acquisition.NestedDriveEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -18,9 +19,9 @@ public class RcloneDriveFolderListingAdapter implements DriveFolderListing {
 
     private static final Logger log = LoggerFactory.getLogger(RcloneDriveFolderListingAdapter.class);
     private static final Duration TIMEOUT = Duration.ofMinutes(5);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final RcloneProperties properties;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public RcloneDriveFolderListingAdapter(RcloneProperties properties) {
         this.properties = properties;
@@ -28,10 +29,29 @@ public class RcloneDriveFolderListingAdapter implements DriveFolderListing {
 
     @Override
     public List<DriveEntry> list(String folderId) {
-        List<String> command = List.of(
+        List<DriveEntry> entries = parseEntries(runLsjson(folderId, List.of()));
+        log.debug("Listed {} top-level entr{} for folder {}", entries.size(),
+                entries.size() == 1 ? "y" : "ies", folderId);
+        return entries;
+    }
+
+    // One lsjson call for both levels rather than one per top-level folder
+    // - a persistent link can hold dozens of creator folders, and each
+    // extra call is another Drive API round trip on every sync.
+    @Override
+    public List<NestedDriveEntry> listTwoLevels(String folderId) {
+        List<NestedDriveEntry> entries = parseNestedEntries(runLsjson(folderId, List.of("--max-depth", "2")));
+        log.debug("Listed {} entr{} two levels deep for folder {}", entries.size(),
+                entries.size() == 1 ? "y" : "ies", folderId);
+        return entries;
+    }
+
+    private String runLsjson(String folderId, List<String> extraArgs) {
+        List<String> command = new ArrayList<>(List.of(
                 properties.binaryPath(), "--config=" + properties.configPath(), "lsjson",
-                "--drive-root-folder-id=" + folderId,
-                properties.remoteName() + ":");
+                "--drive-root-folder-id=" + folderId));
+        command.addAll(extraArgs);
+        command.add(properties.remoteName() + ":");
 
         RcloneProcess.Result result;
         try {
@@ -48,22 +68,35 @@ public class RcloneDriveFolderListingAdapter implements DriveFolderListing {
                     "rclone lsjson failed for folder " + folderId + " (exit " + result.exitCode() + "): "
                             + result.stderr().trim());
         }
+        return result.stdout();
+    }
 
-        List<DriveEntry> entries = parseEntries(result.stdout());
-        log.debug("Listed {} top-level entr{} for folder {}", entries.size(),
-                entries.size() == 1 ? "y" : "ies", folderId);
+    static List<DriveEntry> parseEntries(String json) {
+        List<DriveEntry> entries = new ArrayList<>();
+        for (JsonNode entry : OBJECT_MAPPER.readTree(json)) {
+            entries.add(toDriveEntry(entry));
+        }
         return entries;
     }
 
-    private List<DriveEntry> parseEntries(String json) {
-        JsonNode root = objectMapper.readTree(json);
-        List<DriveEntry> entries = new ArrayList<>();
-        for (JsonNode entry : root) {
-            entries.add(new DriveEntry(
-                    entry.path("ID").asString(),
-                    entry.path("Name").asString(),
-                    entry.path("IsDir").asBoolean()));
+    // "Path" is "A" at the top level and "A/B" one level down. rclone
+    // encodes a "/" inside a Drive name as a lookalike character, so the
+    // first "/" always separates the two levels.
+    static List<NestedDriveEntry> parseNestedEntries(String json) {
+        List<NestedDriveEntry> entries = new ArrayList<>();
+        for (JsonNode entry : OBJECT_MAPPER.readTree(json)) {
+            String path = entry.path("Path").asString();
+            int slash = path.indexOf('/');
+            String parentName = slash < 0 ? null : path.substring(0, slash);
+            entries.add(new NestedDriveEntry(parentName, toDriveEntry(entry)));
         }
         return entries;
+    }
+
+    private static DriveEntry toDriveEntry(JsonNode entry) {
+        return new DriveEntry(
+                entry.path("ID").asString(),
+                entry.path("Name").asString(),
+                entry.path("IsDir").asBoolean());
     }
 }

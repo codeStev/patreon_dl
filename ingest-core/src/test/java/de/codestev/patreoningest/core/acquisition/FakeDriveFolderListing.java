@@ -12,13 +12,23 @@ import java.util.concurrent.ConcurrentHashMap;
 class FakeDriveFolderListing implements DriveFolderListing {
 
     private final Map<String, List<DriveEntry>> entriesByFolderId = new ConcurrentHashMap<>();
+    private final Map<String, List<NestedDriveEntry>> nestedEntriesByFolderId = new ConcurrentHashMap<>();
 
     @Override
     public List<DriveEntry> list(String folderId) {
         return entriesByFolderId.getOrDefault(folderId, List.of());
     }
 
+    @Override
+    public List<NestedDriveEntry> listTwoLevels(String folderId) {
+        return nestedEntriesByFolderId.getOrDefault(folderId, List.of());
+    }
+
     void willReturn(String folderId, List<DriveEntry> entries) {
         entriesByFolderId.put(folderId, entries);
+    }
+
+    void willReturnTwoLevels(String folderId, List<NestedDriveEntry> entries) {
+        nestedEntriesByFolderId.put(folderId, entries);
     }
 }
