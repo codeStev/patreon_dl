@@ -82,6 +82,11 @@ public class ExecuteDownloadUseCase {
         DownloadRuntimeOptions options = new DownloadRuntimeOptions(
                 settings.getBandwidthLimitKbps(), settings.isIoNice());
         Path targetDir = Path.of(properties.downloadRoot(), item.getSource().getCreator());
+        if (item.getGroupName() != null) {
+            // A collection from a COLLECTIONS source - nest it under the
+            // top-level folder (usually the creator) it was found in.
+            targetDir = targetDir.resolve(FilesystemNames.sanitize(item.getGroupName()));
+        }
         for (String segment : FilesystemNames.targetPathSegments(item.getModelName())) {
             targetDir = targetDir.resolve(segment);
         }

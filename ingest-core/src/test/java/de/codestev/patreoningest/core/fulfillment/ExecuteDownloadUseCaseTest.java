@@ -6,6 +6,7 @@ import de.codestev.patreoningest.core.acquisition.DownloadItem;
 import de.codestev.patreoningest.core.acquisition.DownloadItemRepository;
 import de.codestev.patreoningest.core.acquisition.DownloadSource;
 import de.codestev.patreoningest.core.acquisition.DownloadSourceRepository;
+import de.codestev.patreoningest.core.acquisition.FolderLayout;
 import de.codestev.patreoningest.core.acquisition.ItemStatus;
 import de.codestev.patreoningest.core.acquisition.SourceType;
 import org.junit.jupiter.api.AfterEach;
@@ -190,6 +191,22 @@ class ExecuteDownloadUseCaseTest {
 
         assertThat(fakeSourceDownloader.lastTargetDir().toString())
                 .endsWith("bulkamancer/Wolverine/no_supports".replace('/', java.io.File.separatorChar));
+    }
+
+    @Test
+    void aGroupedCollectionNestsUnderItsSanitizedGroupFolder() {
+        DownloadSource source = new DownloadSource("my-archive", null, null, SourceType.DRIVE,
+                "https://drive.example/folder/rolling", ClaimType.NONE, FolderLayout.COLLECTIONS);
+        source.markClaimed();
+        downloadSourceRepository.save(source);
+        DownloadItem item = downloadItemRepository.save(
+                new DownloadItem(source, "2025-01 Release", "collection-jan", true, "Loot Studio 2024/2025"));
+        fakeSourceDownloader.willSucceedWith(new DownloadResult("ignored", 1L));
+
+        executeDownloadUseCase.execute(item.getId());
+
+        assertThat(fakeSourceDownloader.lastTargetDir().toString())
+                .endsWith("my-archive/Loot Studio 2024_2025/2025-01 Release".replace('/', java.io.File.separatorChar));
     }
 
     @Test
