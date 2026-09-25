@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 type Item = {
   id: string;
+  groupName: string | null;
   modelName: string | null;
   status: "PENDING" | "DOWNLOADED" | "FAILED";
   downloadable: boolean;
@@ -17,6 +18,7 @@ type Source = {
   monthLabel: string | null;
   sourceType: "DRIVE" | "GUMROAD" | "MMF";
   sourceUrl: string;
+  folderLayout: "MODELS" | "COLLECTIONS";
   claimType: string | null;
   claimStatus: "DISCOVERED" | "NEEDS_MANUAL" | "CLAIMED";
   claimNote: string | null;
@@ -70,13 +72,19 @@ export default function Overview() {
     return <p role="alert">Error: {errorMessage}</p>;
   }
   if (sources.length === 0) {
-    return <p>Nothing discovered yet.</p>;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <AddDriveLinkForm onAdded={refresh} />
+        <p>Nothing discovered yet.</p>
+      </div>
+    );
   }
 
   const needsManual = sources.filter((s) => s.claimStatus === "NEEDS_MANUAL");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <AddDriveLinkForm onAdded={refresh} />
       {needsManual.length > 0 && (
         <section
           style={{ border: "1px solid #cf222e", borderRadius: 6, padding: "0.75rem 1rem", background: "#fff5f5" }}
@@ -140,6 +148,7 @@ export default function Overview() {
             <ul style={{ marginTop: "0.5rem", paddingLeft: "1.2rem" }}>
               {source.items.map((item) => (
                 <li key={item.id}>
+                  {item.groupName && <span style={{ color: "#57606a" }}>{item.groupName} / </span>}
                   {item.modelName ?? <em>(unnamed)</em>}
                   {" — "}
                   {item.downloadable ? (
@@ -164,12 +173,87 @@ export default function Overview() {
             </ul>
           ) : (
             <p style={{ marginTop: "0.5rem", color: "#57606a", fontSize: "0.85em" }}>
-              No individual items yet — this is a whole-folder registration.
+              {source.folderLayout === "COLLECTIONS"
+                ? "No collections found yet — they appear after the next folder sync."
+                : "No individual items yet — this is a whole-folder registration."}
             </p>
           )}
         </article>
       ))}
     </div>
+  );
+}
+
+// For Drive links no email announces - typically a persistent link that
+// keeps getting new releases. The name becomes the link's own entry in
+// Settings (download policy) and its top-level download folder.
+function AddDriveLinkForm({ onAdded }: { onAdded: () => void }) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [layout, setLayout] = useState<Source["folderLayout"]>("COLLECTIONS");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    fetch("/api/sources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, url, layout }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          throw new Error(body?.message ?? `Request failed: ${res.status}`);
+        }
+        setUrl("");
+        onAdded();
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setPending(false));
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      style={{ border: "1px solid #d0d7de", borderRadius: 6, padding: "0.75rem 1rem" }}
+    >
+      <strong>Add Drive link</strong>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+        <input
+          aria-label="Name"
+          placeholder="Name, e.g. my-archive"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <input
+          aria-label="Drive link"
+          placeholder="https://drive.google.com/drive/folders/…"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          required
+          style={{ flex: "1 1 20rem" }}
+        />
+        <select
+          aria-label="Layout"
+          value={layout}
+          onChange={(e) => setLayout(e.target.value as Source["folderLayout"])}
+        >
+          <option value="COLLECTIONS">One item per collection</option>
+          <option value="MODELS">One item per top-level entry</option>
+        </select>
+        <button type="submit" disabled={pending}>
+          {pending ? "Adding…" : "Add"}
+        </button>
+      </div>
+      <p style={{ margin: "0.35rem 0 0", fontSize: "0.85em", color: "#57606a" }}>
+        Items appear after the next folder sync. Downloads follow the name's policy in Settings (Manual until changed).
+      </p>
+      {error && <p role="alert" style={{ margin: "0.35rem 0 0", color: "#cf222e", fontSize: "0.85em" }}>{error}</p>}
+    </form>
   );
 }
 
