@@ -2,6 +2,7 @@ package de.codestev.patreoningest.app.api;
 
 import de.codestev.patreoningest.core.acquisition.ProviderSettings;
 import de.codestev.patreoningest.core.acquisition.ProviderSettingsRepository;
+import de.codestev.patreoningest.core.ingestion.CreatorMessageParser;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,8 +15,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-// Per-provider EAGER/MANUAL/DISABLED policy - rows already exist thanks to
+// Per-provider EAGER/MANUAL/DISABLED download policy plus the independent
+// AUTO/MANUAL claim (redeem) policy - rows already exist thanks to
 // ProviderSettingsSeeder (one per registered CreatorMessageParser, defaults
 // to MANUAL); this just exposes them for editing instead of requiring a
 // direct DB edit.
@@ -24,15 +28,21 @@ import java.util.Optional;
 public class ProviderSettingsController {
 
     private final ProviderSettingsRepository providerSettingsRepository;
+    private final Set<String> providersWithRedeemableLinks;
 
-    public ProviderSettingsController(ProviderSettingsRepository providerSettingsRepository) {
+    public ProviderSettingsController(ProviderSettingsRepository providerSettingsRepository,
+                                       List<CreatorMessageParser> parsers) {
         this.providerSettingsRepository = providerSettingsRepository;
+        this.providersWithRedeemableLinks = parsers.stream()
+                .filter(CreatorMessageParser::hasRedeemableLinks)
+                .map(CreatorMessageParser::providerId)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     @GetMapping
     public List<ProviderSettingsResponse> list() {
         return providerSettingsRepository.findAll().stream()
-                .map(p -> new ProviderSettingsResponse(p.getProviderId(), p.getDownloadPolicy()))
+                .map(this::toResponse)
                 .sorted(Comparator.comparing(ProviderSettingsResponse::providerId))
                 .toList();
     }
@@ -40,8 +50,8 @@ public class ProviderSettingsController {
     @PutMapping("/{providerId}")
     public ResponseEntity<?> update(@PathVariable String providerId,
                                      @RequestBody UpdateProviderSettingsRequest request) {
-        if (request.downloadPolicy() == null) {
-            return ResponseEntity.badRequest().body(Map.of("message", "downloadPolicy is required"));
+        if (request.downloadPolicy() == null && request.claimPolicy() == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "downloadPolicy or claimPolicy is required"));
         }
 
         Optional<ProviderSettings> existing = providerSettingsRepository.findById(providerId);
@@ -50,8 +60,18 @@ public class ProviderSettingsController {
         }
 
         ProviderSettings settings = existing.get();
-        settings.updatePolicy(request.downloadPolicy());
+        if (request.downloadPolicy() != null) {
+            settings.updatePolicy(request.downloadPolicy());
+        }
+        if (request.claimPolicy() != null) {
+            settings.updateClaimPolicy(request.claimPolicy());
+        }
         providerSettingsRepository.save(settings);
-        return ResponseEntity.ok(new ProviderSettingsResponse(providerId, settings.getDownloadPolicy()));
+        return ResponseEntity.ok(toResponse(settings));
+    }
+
+    private ProviderSettingsResponse toResponse(ProviderSettings settings) {
+        return ProviderSettingsResponse.from(settings,
+                providersWithRedeemableLinks.contains(settings.getProviderId()));
     }
 }

@@ -12,6 +12,13 @@ public interface CreatorMessageParser {
     // settings-table edit.
     String providerId();
 
+    // Whether this provider's links can need redeeming (a ParsedItem with
+    // claimType != NONE, e.g. Gumroad) - only then does the admin UI offer
+    // a redeem (ClaimPolicy) setting for it. Plain Drive providers don't.
+    default boolean hasRedeemableLinks() {
+        return false;
+    }
+
     boolean supports(String fromAddress, String subject);
 
     List<ParsedItem> parse(String plainTextBody, LocalDate receivedAt);

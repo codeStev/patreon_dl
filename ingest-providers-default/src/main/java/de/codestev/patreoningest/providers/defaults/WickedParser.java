@@ -47,6 +47,12 @@ public class WickedParser implements CreatorMessageParser {
         return "wicked";
     }
 
+    // Its numbered Gumroad lines are claimed via GumroadClaimAdapter.
+    @Override
+    public boolean hasRedeemableLinks() {
+        return true;
+    }
+
     @Override
     public boolean supports(String fromAddress, String subject) {
         return subject != null && subject.toLowerCase(Locale.ROOT).contains("wicked");

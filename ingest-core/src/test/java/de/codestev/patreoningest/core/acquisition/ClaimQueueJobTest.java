@@ -37,6 +37,9 @@ class ClaimQueueJobTest {
     @Autowired
     private FakeClaimPort fakeClaimPort;
 
+    @Autowired
+    private ProviderSettingsRepository providerSettingsRepository;
+
     @TestConfiguration
     static class TestConfig {
         @Bean
@@ -142,6 +145,35 @@ class ClaimQueueJobTest {
         DownloadSource gaveUp = reload(source);
         assertThat(gaveUp.getClaimStatus()).isEqualTo(ClaimStatus.NEEDS_MANUAL);
         assertThat(gaveUp.getClaimNote()).contains("still failing");
+    }
+
+    @Test
+    void aProviderWithAutoRedeemOffIsHandedToTheOperatorWithoutAnAttempt() {
+        ProviderSettings wicked = providerSettingsRepository.findById("wicked")
+                .orElseGet(() -> new ProviderSettings("wicked", DownloadPolicy.MANUAL));
+        wicked.updateClaimPolicy(ClaimPolicy.MANUAL);
+        providerSettingsRepository.save(wicked);
+        DownloadSource source = gumroadSource("https://wicked.gumroad.com/l/a/code");
+
+        claimQueueJob.runDue();
+
+        DownloadSource manual = reload(source);
+        assertThat(manual.getClaimStatus()).isEqualTo(ClaimStatus.NEEDS_MANUAL);
+        assertThat(manual.getClaimNote()).contains("Auto-redeem is off");
+        assertThat(fakeClaimPort.claimedUrls()).isEmpty();
+    }
+
+    @Test
+    void redeemingIsIndependentOfTheDownloadPolicy() {
+        ProviderSettings wicked = providerSettingsRepository.findById("wicked")
+                .orElseGet(() -> new ProviderSettings("wicked", DownloadPolicy.MANUAL));
+        wicked.updatePolicy(DownloadPolicy.MANUAL);
+        providerSettingsRepository.save(wicked);
+        DownloadSource source = gumroadSource("https://wicked.gumroad.com/l/a/code");
+
+        claimQueueJob.runDue();
+
+        assertThat(reload(source).getClaimStatus()).isEqualTo(ClaimStatus.CLAIMED);
     }
 
     @Test

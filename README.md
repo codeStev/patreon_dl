@@ -188,9 +188,13 @@ If the new creator uses a distribution mechanism that's already supported
    defaulting to `MANUAL` appears automatically on next startup (see
    `ProviderSettingsSeeder`); no database edit required.
 
+If the creator's emails contain links that need redeeming (e.g. Gumroad,
+like `WickedParser`), also override `hasRedeemableLinks()` to return `true`
+so Settings offers that provider a separate auto/manual redeem setting.
+
 A genuinely new distribution mechanism (not Drive/Gumroad/MyMiniFactory)
 additionally needs a `SourceDownloader`, and a `ClaimPort` if ownership
-needs an explicit action to secure (Drive doesn't; Gumroad will).
+needs an explicit action to secure (Drive doesn't; Gumroad does).
 
 ## Current status
 

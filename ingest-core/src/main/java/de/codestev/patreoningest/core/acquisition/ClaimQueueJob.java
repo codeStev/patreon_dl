@@ -24,15 +24,23 @@ public class ClaimQueueJob {
 
     private final List<ClaimPort> claimPorts;
     private final DownloadSourceRepository downloadSourceRepository;
+    private final ProviderSettingsRepository providerSettingsRepository;
 
-    public ClaimQueueJob(List<ClaimPort> claimPorts, DownloadSourceRepository downloadSourceRepository) {
+    public ClaimQueueJob(List<ClaimPort> claimPorts, DownloadSourceRepository downloadSourceRepository,
+                         ProviderSettingsRepository providerSettingsRepository) {
         this.claimPorts = claimPorts;
         this.downloadSourceRepository = downloadSourceRepository;
+        this.providerSettingsRepository = providerSettingsRepository;
     }
 
     public void runDue() {
         List<DownloadSource> due = downloadSourceRepository.findClaimsDue(LocalDateTime.now());
         for (DownloadSource source : due) {
+            if (claimPolicyOf(source.getCreator()) == ClaimPolicy.MANUAL) {
+                source.markNeedsManualClaim("Auto-redeem is off for " + source.getCreator() + " - claim it by hand");
+                downloadSourceRepository.save(source);
+                continue;
+            }
             Optional<ClaimPort> port = claimPorts.stream()
                     .filter(p -> p.supports() == source.getSourceType())
                     .findFirst();
@@ -43,6 +51,12 @@ public class ClaimQueueJob {
             }
             claimOne(source, port.get());
         }
+    }
+
+    private ClaimPolicy claimPolicyOf(String providerId) {
+        return providerSettingsRepository.findById(providerId)
+                .map(ProviderSettings::getClaimPolicy)
+                .orElse(ClaimPolicy.AUTO);
     }
 
     private void claimOne(DownloadSource source, ClaimPort port) {

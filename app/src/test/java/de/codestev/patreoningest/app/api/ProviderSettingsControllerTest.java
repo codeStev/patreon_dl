@@ -57,6 +57,28 @@ class ProviderSettingsControllerTest {
     }
 
     @Test
+    void claimPolicyDefaultsToAutoAndIsUpdatedIndependentlyOfDownloadPolicy() throws Exception {
+        mockMvc.perform(get("/api/provider-settings"))
+                .andExpect(jsonPath("$[?(@.providerId=='wicked')].claimPolicy").value("AUTO"))
+                .andExpect(jsonPath("$[?(@.providerId=='wicked')].hasRedeemableLinks").value(true))
+                .andExpect(jsonPath("$[?(@.providerId=='nomnom')].hasRedeemableLinks").value(false))
+                .andExpect(jsonPath("$[?(@.providerId=='bulkamancer')].hasRedeemableLinks").value(false));
+
+        mockMvc.perform(put("/api/provider-settings/wicked")
+                        .contentType("application/json")
+                        .content("{\"claimPolicy\": \"MANUAL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.claimPolicy").value("MANUAL"))
+                .andExpect(jsonPath("$.downloadPolicy").value("MANUAL"));
+
+        mockMvc.perform(put("/api/provider-settings/wicked")
+                        .contentType("application/json")
+                        .content("{\"downloadPolicy\": \"EAGER\"}"))
+                .andExpect(jsonPath("$.claimPolicy").value("MANUAL"))
+                .andExpect(jsonPath("$.downloadPolicy").value("EAGER"));
+    }
+
+    @Test
     void putOnAnUnknownProviderReturns404() throws Exception {
         mockMvc.perform(put("/api/provider-settings/does-not-exist")
                         .contentType("application/json")
@@ -65,7 +87,7 @@ class ProviderSettingsControllerTest {
     }
 
     @Test
-    void putWithoutADownloadPolicyReturns400() throws Exception {
+    void putWithNeitherPolicyReturns400() throws Exception {
         mockMvc.perform(put("/api/provider-settings/nomnom")
                         .contentType("application/json")
                         .content("{}"))

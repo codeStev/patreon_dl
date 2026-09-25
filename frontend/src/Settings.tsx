@@ -15,9 +15,13 @@ type FulfillmentSettings = {
 
 type DownloadPolicy = "EAGER" | "MANUAL" | "DISABLED";
 
+type ClaimPolicy = "AUTO" | "MANUAL";
+
 type ProviderSettings = {
   providerId: string;
   downloadPolicy: DownloadPolicy;
+  claimPolicy: ClaimPolicy;
+  hasRedeemableLinks: boolean;
 };
 
 type Status = "loading" | "idle" | "saving" | "saved" | "error";
@@ -283,6 +287,14 @@ const POLICY_DESCRIPTIONS: Record<DownloadPolicy, string> = {
   DISABLED: "Ignored entirely - not even claimed or shown",
 };
 
+const CLAIM_POLICY_DESCRIPTIONS: Record<ClaimPolicy, string> = {
+  AUTO: "Redeems links (e.g. Gumroad) automatically",
+  MANUAL: "Lists links under \"Needs your action\" for you to redeem",
+};
+
+const cellStyle = { padding: "0.25rem 1rem 0.25rem 0" };
+const hintStyle = { display: "block", fontSize: "0.85em", color: "#57606a" };
+
 function ProviderPolicySettings() {
   const [providers, setProviders] = useState<ProviderSettings[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -300,13 +312,16 @@ function ProviderPolicySettings() {
 
   useEffect(refresh, []);
 
-  function updatePolicy(providerId: string, downloadPolicy: DownloadPolicy) {
+  function updateProvider(
+    providerId: string,
+    change: { downloadPolicy: DownloadPolicy } | { claimPolicy: ClaimPolicy },
+  ) {
     setSavingId(providerId);
     setErrorMessage(null);
     fetch(`/api/provider-settings/${providerId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ downloadPolicy }),
+      body: JSON.stringify(change),
     })
       .then(async (res) => {
         if (!res.ok) throw new Error(await extractErrorMessage(res));
@@ -322,27 +337,57 @@ function ProviderPolicySettings() {
       {providers === null && <p>Loading…</p>}
       {providers !== null && (
         <table style={{ borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ textAlign: "left" }}>
+              <th style={cellStyle}>Provider</th>
+              <th style={cellStyle}>Download</th>
+              <th style={cellStyle}>Redeem</th>
+            </tr>
+          </thead>
           <tbody>
             {providers.map((provider) => (
-              <tr key={provider.providerId}>
-                <td style={{ padding: "0.25rem 1rem 0.25rem 0", fontWeight: "bold" }}>
-                  {provider.providerId}
-                </td>
-                <td style={{ padding: "0.25rem 1rem 0.25rem 0" }}>
+              <tr key={provider.providerId} style={{ verticalAlign: "top" }}>
+                <td style={{ ...cellStyle, fontWeight: "bold" }}>{provider.providerId}</td>
+                <td style={cellStyle}>
                   <select
                     value={provider.downloadPolicy}
                     disabled={savingId === provider.providerId}
                     onChange={(e) =>
-                      updatePolicy(provider.providerId, e.target.value as DownloadPolicy)
+                      updateProvider(provider.providerId, {
+                        downloadPolicy: e.target.value as DownloadPolicy,
+                      })
                     }
                   >
                     <option value="EAGER">EAGER</option>
                     <option value="MANUAL">MANUAL</option>
                     <option value="DISABLED">DISABLED</option>
                   </select>
+                  <span style={hintStyle}>{POLICY_DESCRIPTIONS[provider.downloadPolicy]}</span>
                 </td>
-                <td style={{ padding: "0.25rem 0", fontSize: "0.85em", color: "#57606a" }}>
-                  {POLICY_DESCRIPTIONS[provider.downloadPolicy]}
+                <td style={cellStyle}>
+                  {provider.hasRedeemableLinks ? (
+                    <>
+                      <select
+                        value={provider.claimPolicy}
+                        disabled={savingId === provider.providerId || provider.downloadPolicy === "DISABLED"}
+                        onChange={(e) =>
+                          updateProvider(provider.providerId, {
+                            claimPolicy: e.target.value as ClaimPolicy,
+                          })
+                        }
+                      >
+                        <option value="AUTO">AUTO</option>
+                        <option value="MANUAL">MANUAL</option>
+                      </select>
+                      <span style={hintStyle}>
+                        {provider.downloadPolicy === "DISABLED"
+                          ? "Nothing is redeemed for a disabled provider"
+                          : CLAIM_POLICY_DESCRIPTIONS[provider.claimPolicy]}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={hintStyle}>Nothing to redeem</span>
+                  )}
                 </td>
               </tr>
             ))}

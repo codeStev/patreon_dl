@@ -460,16 +460,28 @@ Stored per-provider in Postgres (not YAML), editable live from the UI:
 create table provider_settings (
     provider_id varchar primary key,   -- 'nomnom', 'bulkamancer', 'wicked'
     download_policy varchar not null,
+    claim_policy varchar not null default 'AUTO', -- AUTO, MANUAL (V7)
     updated_at timestamp
 );
 ```
+
+Redeeming and downloading are set **independently**. `download_policy` only
+governs the download queue; whether a port-backed link (Gumroad) gets
+redeemed is `claim_policy`: `AUTO` lets `ClaimQueueJob` do it, `MANUAL`
+sends each such source straight to NEEDS_MANUAL ("Needs your action")
+without opening a browser. So Wicked can auto-redeem its Gumroad links while
+its huge Drive folder only downloads on request. `DISABLED` still overrides
+both, since nothing is registered at all. The UI only shows the redeem setting
+for providers whose parser declares `hasRedeemableLinks()` (Wicked);
+Drive-only providers have nothing to redeem.
 
 On startup, every registered parser bean gets a default row inserted
 (`ON CONFLICT DO NOTHING`) if missing — default to `MANUAL` for brand-new,
 untested providers. This keeps "add a provider" a one-class change; the
 settings row appears automatically.
 
-Current expected values: Nomnom = EAGER, Bulkamancer = EAGER, Wicked = MANUAL.
+Current expected values: Nomnom = EAGER, Bulkamancer = EAGER, Wicked =
+MANUAL download + AUTO redeem.
 
 ## Handling folders that fill in over time
 
