@@ -32,13 +32,16 @@ public class FolderSyncJob {
     private final DownloadSourceRepository downloadSourceRepository;
     private final DownloadItemRepository downloadItemRepository;
     private final DriveFolderListing driveFolderListing;
+    private final DriveFolderTitles driveFolderTitles;
 
     public FolderSyncJob(DownloadSourceRepository downloadSourceRepository,
                           DownloadItemRepository downloadItemRepository,
-                          DriveFolderListing driveFolderListing) {
+                          DriveFolderListing driveFolderListing,
+                          DriveFolderTitles driveFolderTitles) {
         this.downloadSourceRepository = downloadSourceRepository;
         this.downloadItemRepository = downloadItemRepository;
         this.driveFolderListing = driveFolderListing;
+        this.driveFolderTitles = driveFolderTitles;
     }
 
     public void syncAll() {
@@ -198,7 +201,7 @@ public class FolderSyncJob {
     private void syncWholeFolderAsOneModel(DownloadSource source, String folderId, List<DriveEntry> entries) {
         boolean isNew = downloadItemRepository.findBySourceIdAndRemoteFileId(source.getId(), folderId).isEmpty();
         if (isNew) {
-            downloadItemRepository.save(new DownloadItem(source, fallbackModelLabel(source, folderId), folderId, true));
+            downloadItemRepository.save(new DownloadItem(source, folderLabel(source, folderId), folderId, true));
             log.info("Source {} looks like a single model's own folder ({} entr{}) - "
                     + "registering as one item instead of enumerating", source.getId(), entries.size(),
                     entries.size() == 1 ? "y" : "ies");
@@ -246,8 +249,25 @@ public class FolderSyncJob {
         downloadSourceRepository.save(source);
     }
 
+    // The folder's real name (read from its public share page), so the model
+    // gets its own download directory and library name; the generic label if
+    // that can't be read, or if another model of this creator already has
+    // that name (two different folders must never merge into one directory).
+    private String folderLabel(DownloadSource source, String folderId) {
+        Optional<String> title = driveFolderTitles.titleOf(folderId);
+        if (title.isEmpty()) {
+            return fallbackModelLabel(source, folderId);
+        }
+        String name = title.get();
+        if (downloadItemRepository.existsBySourceCreatorAndModelName(source.getCreator(), name)) {
+            return name + " (" + folderId.substring(0, Math.min(8, folderId.length())) + ")";
+        }
+        return name;
+    }
+
     // Getting the folder/file's real Drive-side name here isn't possible
-    // with the rclone commands this app already shells out to: `lsjson
+    // with the rclone commands this app already shells out to (folderLabel
+    // reads it from the share page instead): `lsjson
     // --stat` on a path rooted at this exact ID returns a synthetic empty
     // name for the root itself (confirmed by reading rclone's own
     // operations/lsjson.go source, not assumed), and the Drive API's

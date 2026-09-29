@@ -17,6 +17,8 @@ public interface DownloadItemRepository extends JpaRepository<DownloadItem, UUID
 
     Optional<DownloadItem> findBySourceIdAndRemoteFileId(UUID sourceId, String remoteFileId);
 
+    boolean existsBySourceCreatorAndModelName(String creator, String modelName);
+
     // A null remoteFileId marks a directly-named registration (Bulkamancer
     // standalone DMs, Wicked per-model Gumroad lines) - a clean 1:1
     // model<->link mapping the parser already fully represents, with

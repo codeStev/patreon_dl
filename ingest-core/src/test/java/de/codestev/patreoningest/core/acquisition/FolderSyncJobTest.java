@@ -41,12 +41,21 @@ class FolderSyncJobTest {
     @Autowired
     private FakeDriveFolderListing fakeDriveFolderListing;
 
+    @Autowired
+    private FakeDriveFolderTitles fakeDriveFolderTitles;
+
     @TestConfiguration
     static class TestConfig {
         @Bean
         @Primary
         FakeDriveFolderListing fakeDriveFolderListing() {
             return new FakeDriveFolderListing();
+        }
+
+        @Bean
+        @Primary
+        FakeDriveFolderTitles fakeDriveFolderTitles() {
+            return new FakeDriveFolderTitles();
         }
     }
 
@@ -228,6 +237,47 @@ class FolderSyncJobTest {
         assertThat(downloadItemRepository.findBySourceId(source.getId()))
                 .extracting(DownloadItem::getRemoteFileId, DownloadItem::getRemoteIsDirectory)
                 .containsExactly(tuple("1_eSq8xMKhY4SH5Fg1s7LGIUTd_idlmmF", true));
+    }
+
+    @Test
+    void aSingleModelFolderIsNamedAfterItsRealDriveName() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/skeletor");
+        fakeDriveFolderListing.willReturn("skeletor", List.of(
+                new DriveEntry("stl-id", "STL", true), new DriveEntry("renders-id", "Render Images", true)));
+        fakeDriveFolderTitles.willReturn("skeletor", "Skeletor - He-man and the Masters of the Universe");
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getModelName)
+                .containsExactly("Skeletor - He-man and the Masters of the Universe");
+    }
+
+    @Test
+    void twoFoldersWithTheSameRealNameDoNotShareADirectory() {
+        DownloadSource first = claimedSource("https://drive.google.com/drive/folders/first-folder");
+        DownloadSource second = claimedSource("https://drive.google.com/drive/folders/second-folder");
+        for (String id : List.of("first-folder", "second-folder")) {
+            fakeDriveFolderListing.willReturn(id, List.of(new DriveEntry(id + "-stl", "STL", true)));
+            fakeDriveFolderTitles.willReturn(id, "Chibi He-Man");
+        }
+
+        folderSyncJob.syncAll();
+
+        assertThat(List.of(first, second)).extracting(src -> downloadItemRepository.findBySourceId(src.getId()).get(0).getModelName())
+                .containsExactlyInAnyOrder("Chibi He-Man", "Chibi He-Man (second-f)");
+    }
+
+    @Test
+    void aFolderWhoseNameCantBeReadKeepsTheGenericLabel() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/unreadable-folder");
+        fakeDriveFolderListing.willReturn("unreadable-folder", List.of(new DriveEntry("stl-id", "STL", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getModelName)
+                .containsExactly("AUGUST (unreadab)");
     }
 
     @Test
