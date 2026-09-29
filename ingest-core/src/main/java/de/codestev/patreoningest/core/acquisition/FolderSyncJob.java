@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -24,19 +23,11 @@ public class FolderSyncJob {
 
     // Real observed data: a Nomnom link sometimes points directly at ONE
     // model's own folder (e.g. "Chibi He-Man") whose top-level contents are
-    // organizational subfolders like "STL"/"Render Images"/"Presupport",
+    // organizational subfolders like "STL"/"Render Images"/"Presupports",
     // not separate models - as opposed to the classic case of a folder
-    // containing several actual model subfolders side by side. When every
-    // top-level entry's name matches this known vocabulary, the whole
-    // folder is treated as one model instead of enumerating each entry as
-    // if it were its own. Deliberately requires ALL entries to match (not
-    // just some) - a real multi-model folder's entries are character names
-    // that won't coincidentally collide with this list.
-    private static final Set<String> ORGANIZATIONAL_SUBFOLDER_NAMES = Set.of(
-            "stl", "stls", "render images", "renders", "render", "presupport",
-            "pre supported", "presupported", "supported", "unsupported", "uncut",
-            "textures", "images", "preview", "previews", "parts", "chitubox", "lys"
-    );
+    // containing several actual model subfolders side by side. See
+    // SingleModelFolder for how that is decided (all entries must be
+    // organizational; a stray cover or readme doesn't count against it).
 
     private final DownloadSourceRepository downloadSourceRepository;
     private final DownloadItemRepository downloadItemRepository;
@@ -114,7 +105,7 @@ public class FolderSyncJob {
         List<DriveEntry> entries = driveFolderListing.list(folderId);
 
         if (looksLikeASingleModelsOwnFolder(entries)) {
-            syncWholeFolderAsOneModel(source, folderId, entries.size());
+            syncWholeFolderAsOneModel(source, folderId, entries);
             return;
         }
 
@@ -196,12 +187,7 @@ public class FolderSyncJob {
     }
 
     private static boolean looksLikeASingleModelsOwnFolder(List<DriveEntry> entries) {
-        return !entries.isEmpty() && entries.stream().allMatch(FolderSyncJob::isOrganizationalName);
-    }
-
-    private static boolean isOrganizationalName(DriveEntry entry) {
-        String normalized = entry.name().toLowerCase(Locale.ROOT).replace('_', ' ').replace('-', ' ').trim();
-        return ORGANIZATIONAL_SUBFOLDER_NAMES.contains(normalized);
+        return SingleModelFolder.matches(entries);
     }
 
     // The folder IS one model (its top-level entries are organizational
@@ -209,15 +195,41 @@ public class FolderSyncJob {
     // single item instead of enumerating its contents as if they were
     // distinct models. A plain folder-copy of the whole thing already
     // recurses into whatever's inside correctly.
-    private void syncWholeFolderAsOneModel(DownloadSource source, String folderId, int entryCount) {
+    private void syncWholeFolderAsOneModel(DownloadSource source, String folderId, List<DriveEntry> entries) {
         boolean isNew = downloadItemRepository.findBySourceIdAndRemoteFileId(source.getId(), folderId).isEmpty();
         if (isNew) {
             downloadItemRepository.save(new DownloadItem(source, fallbackModelLabel(source, folderId), folderId, true));
-            log.info("Source {} looks like a single model's own folder ({} organizational subfolder(s)) - "
-                    + "registering as one item instead of enumerating", source.getId(), entryCount);
+            log.info("Source {} looks like a single model's own folder ({} entr{}) - "
+                    + "registering as one item instead of enumerating", source.getId(), entries.size(),
+                    entries.size() == 1 ? "y" : "ies");
+            discardSplitLeftovers(source, folderId, entries);
         }
         source.markSynced(isNew);
         downloadSourceRepository.save(source);
+    }
+
+    // A link that was synced before it was recognized as one model's folder
+    // has its subfolders registered as separate "models" ("STL", "Render
+    // Images", ...). Those still waiting to be downloaded are dropped now
+    // (the whole-folder item covers them); those already downloaded can't
+    // be undone from here - their files sit in folders named after the
+    // subfolder and need cleaning up by hand, so they are reported.
+    private void discardSplitLeftovers(DownloadSource source, String folderId, List<DriveEntry> entries) {
+        Set<String> subfolderIds = entries.stream().map(DriveEntry::id).collect(Collectors.toSet());
+        for (DownloadItem item : downloadItemRepository.findBySourceId(source.getId())) {
+            if (folderId.equals(item.getRemoteFileId()) || !subfolderIds.contains(item.getRemoteFileId())) {
+                continue;
+            }
+            if (item.getStatus() == ItemStatus.PENDING) {
+                downloadItemRepository.delete(item);
+                log.info("Dropped the pending item '{}' of source {}: it is part of the single model registered now",
+                        item.getModelName(), source.getId());
+            } else {
+                log.warn("Item '{}' of source {} was downloaded (status {}) as a separate model before the folder was "
+                                + "recognized as one model - its files are in '{}' and must be sorted out by hand",
+                        item.getModelName(), source.getId(), item.getStatus(), item.getLocalPath());
+            }
+        }
     }
 
     // The whole source IS one file (e.g. a Nomnom-style whole-folder

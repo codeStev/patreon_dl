@@ -212,6 +212,58 @@ class FolderSyncJobTest {
                 .containsExactly(tuple("chibi-he-man", true));
     }
 
+    // Real link (nomnom): "STL", "Render Images" and "Presupports" - the plural
+    // was not recognized, so each subfolder became a "model" of its own and
+    // their contents merged with other models in the library.
+    @Test
+    void aSingleModelFolderWithPluralPresupportsIsOneModel() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/1_eSq8xMKhY4SH5Fg1s7LGIUTd_idlmmF");
+        fakeDriveFolderListing.willReturn("1_eSq8xMKhY4SH5Fg1s7LGIUTd_idlmmF", List.of(
+                new DriveEntry("stl-id", "STL", true),
+                new DriveEntry("renders-id", "Render Images", true),
+                new DriveEntry("presupports-id", "Presupports", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getRemoteFileId, DownloadItem::getRemoteIsDirectory)
+                .containsExactly(tuple("1_eSq8xMKhY4SH5Fg1s7LGIUTd_idlmmF", true));
+    }
+
+    @Test
+    void aCoverImageInsideASingleModelFolderStillMakesItOneModel() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/with-cover");
+        fakeDriveFolderListing.willReturn("with-cover", List.of(
+                new DriveEntry("stl-id", "STL", true),
+                new DriveEntry("cover-id", "cover.jpg", false)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getRemoteFileId)
+                .containsExactly("with-cover");
+    }
+
+    @Test
+    void aLinkThatWasSplitBeforeItIsRecognizedDropsItsPendingPiecesAndKeepsDownloadedOnes() {
+        DownloadSource source = claimedSource("https://drive.google.com/drive/folders/was-split");
+        DownloadItem pending = downloadItemRepository.save(new DownloadItem(source, "Render Images", "renders-id", true));
+        DownloadItem downloaded = new DownloadItem(source, "STL", "stl-id", true);
+        downloaded.markDownloaded("/downloads/nomnom/STL", 1234L);
+        downloadItemRepository.save(downloaded);
+        fakeDriveFolderListing.willReturn("was-split", List.of(
+                new DriveEntry("stl-id", "STL", true),
+                new DriveEntry("renders-id", "Render Images", true),
+                new DriveEntry("presupports-id", "Presupports", true)));
+
+        folderSyncJob.syncAll();
+
+        assertThat(downloadItemRepository.findBySourceId(source.getId()))
+                .extracting(DownloadItem::getRemoteFileId)
+                .containsExactlyInAnyOrder("stl-id", "was-split"); // the pending piece is gone, the downloaded one is kept
+        assertThat(downloadItemRepository.findById(pending.getId())).isEmpty();
+    }
+
     @Test
     void aFolderWithAMixOfOrganizationalAndRealModelNamesIsStillEnumerated() {
         // Only ALL-organizational triggers the single-model treatment - a
